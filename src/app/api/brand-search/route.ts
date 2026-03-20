@@ -28,6 +28,7 @@ export async function GET(request: Request) {
     let affinityMap = new Map<number, number>()
 
     if (brand) {
+      // Search brand affinities
       const { data: brandData } = await supabase
         .from('intel_brand_affinities')
         .select('chartmetric_id, affinity_scale')
@@ -40,13 +41,12 @@ export async function GET(request: Request) {
           affinityMap.set(row.chartmetric_id, row.affinity_scale)
         }
       }
-    }
 
-    if (sector) {
+      // Also search sector affinities with the same query
       const { data: sectorData } = await supabase
         .from('intel_sector_affinities')
         .select('chartmetric_id, affinity_scale')
-        .ilike('sector_name', `%${sector}%`)
+        .ilike('sector_name', `%${brand}%`)
         .gte('affinity_scale', 1.0)
 
       for (const row of sectorData || []) {

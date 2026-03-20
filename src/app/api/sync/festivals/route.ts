@@ -32,13 +32,12 @@ export async function POST(request: Request) {
     // Step 1: Get upcoming large/mega US festivals
     const festParams = new URLSearchParams({
       'code2s[]': 'US',
-      'eventSizes[]': 'large',
       sortColumn: 'startDate',
       sortOrderDesc: 'false',
       limit: String(festivalLimit),
       offset: '0',
     })
-    const festUrl = `${CM_BASE}/festival/list?${festParams.toString()}&eventSizes[]=mega`
+    const festUrl = `${CM_BASE}/festival/list?${festParams.toString()}`
 
     const festRes = await fetch(festUrl, {
       headers: { Authorization: `Bearer ${token}` },
@@ -78,8 +77,8 @@ export async function POST(request: Request) {
         'eventIds[]': String(festival.id),
         limit: '100',
         offset: '0',
-        sortColumn: 'latest.cm_artist_rank',
-        sortOrderDesc: 'false',
+        sortColumn: 'sp_followers',
+        sortOrderDesc: 'true',
       })
 
       const lineupRes = await fetch(
@@ -89,7 +88,7 @@ export async function POST(request: Request) {
       if (!lineupRes.ok) continue
 
       const lineupData = await lineupRes.json()
-      const lineup = lineupData?.obj || []
+      const lineup = lineupData?.obj?.obj || lineupData?.obj || []
 
       const festDate = festival.date?.split(' ')[0] || null
 
@@ -112,7 +111,7 @@ export async function POST(request: Request) {
             name: artist.name,
             image_url: artist.image_url || null,
             career_stage: artist.career_status?.stage || null,
-            primary_genre: artist.genres || null,
+            primary_genre: artist.genres?.split(',')[0]?.trim() || null,
             spotify_followers: artist.sp_followers || null,
             spotify_monthly_listeners: artist.sp_monthly_listeners || null,
             instagram_followers: artist.ins_followers || null,

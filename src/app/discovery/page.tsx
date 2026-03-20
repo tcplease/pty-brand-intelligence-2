@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 
 // ── Brand colors ──────────────────────────────────────
 const Y = '#F9D40A'
-const BG = '#1B1B1B'
+const BG = '#0f0f0f'
 const SURFACE = '#1e1e1e'
 const SURFACE2 = '#1C1C1C'
 const BORDER = 'rgba(255,255,255,0.08)'
@@ -92,11 +92,13 @@ function ArtistCard({
   index,
   onDismiss,
   onNavigate,
+  onActivity,
 }: {
   artist: DiscoveryArtist
   index: number
   onDismiss: (id: number) => void
   onNavigate: (id: number) => void
+  onActivity: (id: number) => void
 }) {
   const [dismissing, setDismissing] = useState(false)
   const [showTooltip, setShowTooltip] = useState(false)
@@ -135,14 +137,8 @@ function ArtistCard({
         <div className="absolute inset-x-0 bottom-0 h-20" style={{ background: `linear-gradient(to top, ${SURFACE} 0%, transparent 100%)` }} />
 
         {artist.cm_score != null && (
-          <div className="absolute font-bold" style={{ top: '8px', left: '8px', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(0,0,0,0.75)', color: Y, backdropFilter: 'blur(4px)' }}>
+          <div className="absolute font-bold" style={{ top: '8px', right: '8px', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(27,27,27,0.9)', color: Y }}>
             {Math.round(artist.cm_score)}
-          </div>
-        )}
-
-        {artist.festival_count > 1 && (
-          <div className="absolute" style={{ top: '8px', right: '8px', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', background: Y, color: BG }}>
-            {artist.festival_count} festivals
           </div>
         )}
       </div>
@@ -156,7 +152,7 @@ function ArtistCard({
         <div className="flex items-center" style={{ gap: '4px', marginBottom: '8px' }}>
           {artist.career_stage && (
             <span style={{
-              fontSize: '10px', fontWeight: 600, padding: '2px 7px', borderRadius: '4px',
+              fontSize: '8px', fontWeight: 600, padding: '2px 7px', borderRadius: '4px',
               background: `${careerColor}15`, color: careerColor,
               textTransform: 'uppercase', letterSpacing: '0.04em',
             }}>
@@ -165,7 +161,7 @@ function ArtistCard({
           )}
           {genre && (
             <span style={{
-              fontSize: '10px', fontWeight: 600, padding: '2px 7px', borderRadius: '4px',
+              fontSize: '8px', fontWeight: 600, padding: '2px 7px', borderRadius: '4px',
               background: 'rgba(255,255,255,0.07)', color: W50,
               textTransform: 'uppercase', letterSpacing: '0.04em',
               maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis',
@@ -175,28 +171,16 @@ function ArtistCard({
             </span>
           )}
         </div>
-
-        {fests.length > 0 && (
-          <div className="flex flex-wrap" style={{ gap: '3px', marginBottom: '8px' }}>
-            {fests.slice(0, 2).map((f, i) => {
-              const shortName = f.festival_name.replace(/\s*\d{4}$/, '').replace(/\s*presents\s*.*/i, '')
-              return (
-                <span key={i} style={{
-                  fontSize: '10px', fontWeight: 500, padding: '2px 8px', borderRadius: '12px',
-                  background: `${Y}12`, color: Y,
-                }}>
-                  {shortName.length > 20 ? shortName.slice(0, 20) + '…' : shortName}
-                </span>
-              )
-            })}
-            {fests.length > 2 && (
-              <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '12px', background: BORDER, color: W30 }}>
-                +{fests.length - 2}
-              </span>
-            )}
+        {/* Festival count — links to activity */}
+        {artist.festival_count > 0 && (
+          <div
+            onClick={(e) => { e.stopPropagation(); onActivity(artist.chartmetric_id) }}
+            className="text-xs font-medium mb-2 cursor-pointer hover:underline"
+            style={{ color: Y }}
+          >
+            🎪 {artist.festival_count} festival{artist.festival_count !== 1 ? 's' : ''}
           </div>
         )}
-
         <div className="flex items-center" style={{ gap: '8px', marginBottom: '8px' }}>
           <div className="flex items-center" style={{ gap: '3px' }}>
             <svg style={{ width: '11px', height: '11px', color: '#888', flexShrink: 0 }} viewBox="0 0 24 24" fill="currentColor">
@@ -274,6 +258,7 @@ export default function DiscoveryPage() {
   const [search, setSearch] = useState('')
   const [stageFilter, setStageFilter] = useState('')
   const [sortBy, setSortBy] = useState<'festivals' | 'score' | 'recent'>('festivals')
+  const [minFestivals, setMinFestivals] = useState(0)
 
   const fetchArtists = () => {
     setLoading(true)
@@ -307,6 +292,9 @@ export default function DiscoveryPage() {
   }
   if (stageFilter) {
     filtered = filtered.filter(a => a.career_stage?.toLowerCase() === stageFilter.toLowerCase())
+  }
+  if (minFestivals > 0) {
+    filtered = filtered.filter(a => a.festival_count >= minFestivals)
   }
   if (sortBy === 'score') {
     filtered = [...filtered].sort((a, b) => (b.cm_score || 0) - (a.cm_score || 0))
@@ -377,6 +365,15 @@ export default function DiscoveryPage() {
             {stages.map(s => <option key={s} value={s!}>{s}</option>)}
           </select>
 
+          <select value={minFestivals} onChange={e => setMinFestivals(parseInt(e.target.value))}
+            className="px-3 py-1.5 rounded-lg border text-xs outline-none"
+            style={{ background: SURFACE2, borderColor: BORDER, color: W80 }}>
+            <option value="0">All Festivals</option>
+            <option value="2">2+ Festivals</option>
+            <option value="3">3+ Festivals</option>
+            <option value="4">4+ Festivals</option>
+          </select>
+
           <select value={sortBy} onChange={e => setSortBy(e.target.value as any)}
             className="px-3 py-1.5 rounded-lg border text-xs outline-none"
             style={{ background: SURFACE2, borderColor: BORDER, color: W80 }}>
@@ -411,6 +408,7 @@ export default function DiscoveryPage() {
                 index={i}
                 onDismiss={handleDismiss}
                 onNavigate={(id) => router.push(`/artists/${id}`)}
+                onActivity={(id) => router.push(`/artists/${id}?tab=activity`)}
               />
             ))}
           </div>

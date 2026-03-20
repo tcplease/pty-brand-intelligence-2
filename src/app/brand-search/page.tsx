@@ -17,10 +17,16 @@ const GREEN = '#00D26A'
 const AGE_RANGES = ['13-17', '18-24', '25-34', '35-44', '45-64', '65+']
 
 const TOP_SECTORS = [
-  'Fashion & Apparel', 'Beauty & Cosmetics', 'Fitness & Wellness',
-  'Food & Beverage', 'Consumer Electronics', 'Automotive',
-  'Travel & Hospitality', 'Financial Services', 'Gaming',
-  'Sports & Outdoors', 'Streaming & Entertainment', 'Alcohol & Spirits',
+  'Activewear', 'Art & Design', 'Beauty & Cosmetics',
+  'Beer, Wine & Spirits', 'Business & Careers', 'Camera & Photography',
+  'Cars & Motorbikes', 'Clothes, Shoes, Handbags & Accessories',
+  'Coffee, Tea & Beverages', 'Electronics & Computers', 'Fitness & Yoga',
+  'Friends, Family & Relationships', 'Gaming', 'Healthcare & Medicine',
+  'Healthy Lifestyle', 'Home Decor, Furniture & Garden', 'Jewellery & Watches',
+  'Luxury Goods', 'Music', 'Pets',
+  'Restaurants, Food & Grocery', 'Shopping & Retail', 'Sports',
+  'Television & Film', 'Toys, Children & Baby', 'Travel, Tourism & Aviation',
+  'Wedding',
 ]
 
 // ── Types ─────────────────────────────────────────────

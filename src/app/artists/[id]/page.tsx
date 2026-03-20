@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 
 // ── Brand colors ──────────────────────────────────────
 const Y = '#F9D40A'
-const BG = '#1B1B1B'
+const BG = '#0f0f0f'
 const SURFACE = '#141414'
 const SURFACE2 = '#1C1C1C'
 const SURFACE3 = '#242424'
@@ -13,8 +13,8 @@ const BORDER = 'rgba(255,255,255,0.08)'
 const W80 = 'rgba(255,255,255,0.8)'
 const W50 = 'rgba(255,255,255,0.5)'
 const W30 = 'rgba(255,255,255,0.3)'
-const BLUE = '#4A9EFF'
-const PINK = '#FF6EB4'
+const BLUE = '#60bae1'
+const PINK = '#ec989c'
 const GREEN = '#00D26A'
 
 const STAGE_COLORS: Record<string, string> = {
@@ -29,6 +29,14 @@ const STAGE_COLORS: Record<string, string> = {
   'Lost': '#FF4444',
 }
 
+const CAREER_COLORS: Record<string, string> = {
+  legendary: '#ef4444',
+  superstar: '#f97316',
+  mainstream: '#F9D40A',
+  'mid-level': '#00D26A',
+  developing: '#4A9EFF',
+  undiscovered: 'rgba(255,255,255,0.3)',
+}
 const CAREER_STAGES = ['Undiscovered', 'Developing', 'Mid-Level', 'Mainstream', 'Superstar', 'Legendary']
 
 const ETHNICITY_LABELS: Record<string, string> = {
@@ -160,7 +168,7 @@ function DonutChart({ male, female }: { male: number; female: number }) {
   const gap = 2
 
   return (
-    <svg viewBox="0 0 100 100" className="w-24 h-24">
+    <svg viewBox="0 0 100 100" className="w-36 h-36">
       {/* Female arc (background) */}
       <circle cx={cx} cy={cy} r={r} fill="none" stroke={PINK} strokeWidth="10"
         strokeDasharray={`${femaleDash - gap} ${circumference - femaleDash + gap}`}
@@ -197,10 +205,10 @@ function ButterflyChart({ artist }: { artist: ArtistDetail }) {
 
   return (
     <div>
-      {/* Donut + legend */}
-      <div className="flex items-center gap-4 mb-4">
+      {/* Donut + legend — centered */}
+      <div className="flex flex-col items-center mb-6">
         <DonutChart male={malePct} female={femalePct} />
-        <div className="flex flex-col gap-2">
+        <div className="flex gap-5 mt-3">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-sm" style={{ background: BLUE }} />
             <span className="text-sm font-bold text-white">{formatPct(malePct)}</span>
@@ -213,6 +221,7 @@ function ButterflyChart({ artist }: { artist: ArtistDetail }) {
           </div>
         </div>
       </div>
+      <div className="text-xs uppercase tracking-wider mb-3" style={{ color: W30 }}>Age Breakdown</div>
 
       {/* Butterfly bars */}
       {ageRows.map(row => {
@@ -410,6 +419,14 @@ export default function ArtistPage() {
   const [activity, setActivity] = useState<ActivityEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'contacts' | 'intelligence' | 'activity' | 'pitch'>('contacts')
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const tab = params.get('tab')
+    if (tab && ['contacts', 'intelligence', 'activity', 'pitch'].includes(tab)) {
+      setActiveTab(tab as any)
+    }
+  }, [])
   const [intelTab, setIntelTab] = useState<'brands' | 'sectors'>('brands')
   const [copyMsg, setCopyMsg] = useState('')
   const [pitchInput, setPitchInput] = useState('')
@@ -506,8 +523,8 @@ ${deals.length > 0 ? `Tours: ${deals.map(d => `${d.tour ?? 'Untitled'} (${d.tota
 
   const TABS = [
     { id: 'contacts' as const, label: `Contacts${contacts.length > 0 ? ` (${contacts.length})` : ''}` },
-    { id: 'intelligence' as const, label: 'Intelligence' },
     { id: 'activity' as const, label: 'Activity' },
+    { id: 'intelligence' as const, label: 'Intelligence' },
     { id: 'pitch' as const, label: '⚡ Pitch Builder' },
   ]
 
@@ -521,6 +538,9 @@ ${deals.length > 0 ? `Tours: ${deals.map(d => `${d.tour ?? 'Untitled'} (${d.tota
   <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
   <a href="/" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>
     Roster
+  </a>
+  <a href="/discovery" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>
+    Discovery
   </a>
   <a href="/brand-search" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>
     Brand Search
@@ -544,7 +564,7 @@ ${deals.length > 0 ? `Tours: ${deals.map(d => `${d.tour ?? 'Untitled'} (${d.tota
 
           <div className="flex-1 min-w-0">
             <div className="text-xs uppercase tracking-widest mb-1" style={{ color: W30 }}>
-              {artist.primary_genre ?? '—'}
+              {artist.primary_genre?.split(',')[0]?.trim() ?? '—'}
             </div>
             <h1 className="font-bold leading-none mb-3 text-white"
               style={{ fontSize: 'clamp(26px, 4vw, 40px)', letterSpacing: '-0.02em' }}>
@@ -591,9 +611,9 @@ ${deals.length > 0 ? `Tours: ${deals.map(d => `${d.tour ?? 'Untitled'} (${d.tota
                   const isPast = i < stageIdx
                   return (
                     <div key={stage} className="flex-1 flex flex-col gap-1">
-                      <div className="h-1 rounded-sm" style={{ background: isActive ? Y : isPast ? '#555' : BORDER }} />
+                      <div className="h-1 rounded-sm" style={{ background: isActive ? (CAREER_COLORS[stage.toLowerCase()] ?? Y) : isPast ? '#555' : BORDER }} />
                       <div className="text-center hidden sm:block"
-                        style={{ fontSize: '8px', letterSpacing: '0.05em', color: isActive ? Y : '#4b5563' }}>
+                        style={{ fontSize: '8px', letterSpacing: '0.05em', color: isActive ? (CAREER_COLORS[stage.toLowerCase()] ?? Y) : '#4b5563' }}>
                         {stage.toUpperCase()}
                       </div>
                     </div>
