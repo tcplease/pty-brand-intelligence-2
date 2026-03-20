@@ -79,7 +79,7 @@ async function fetchAllBoardItems(boardId: string, extraFields = '') {
   let cursor: string | null = null
 
   do {
-    const cursorArg = cursor ? `, cursor: "${cursor}"` : ''
+    const cursorArg: string = cursor ? `, cursor: "${cursor}"` : ''
     const query = `{
       boards(ids: ${boardId}) {
         items_page(limit: 100${cursorArg}) {
