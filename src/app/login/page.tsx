@@ -30,7 +30,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#1B1B1B] flex items-center justify-center">
+    <div className="min-h-screen bg-[#0F0F0F] flex items-center justify-center">
       <div className="w-full max-w-sm p-8 animate-fade-up">
         <img
           src="/pty-logo.svg"

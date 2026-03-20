@@ -23,7 +23,7 @@ interface BrandSuggestion {
 
 // ── Brand colors ──────────────────────────────────────
 const Y = '#F9D40A'
-const BG = '#1B1B1B'
+const BG = '#0f0f0f'
 const SURFACE = '#1e1e1e'
 const BORDER = 'rgba(255,255,255,0.08)'
 const W50 = 'rgba(255,255,255,0.5)'
@@ -86,7 +86,7 @@ function ArtistCard({ artist, onClick }: { artist: Artist; onClick: () => void }
           <div className="flex items-center" style={{ gap: '4px', marginBottom: '6px' }}>
             {artist.career_stage && (
               <span style={{
-                fontSize: '10px',
+                fontSize: '8px',
                 fontWeight: 600,
                 padding: '2px 7px',
                 borderRadius: '4px',
@@ -100,7 +100,7 @@ function ArtistCard({ artist, onClick }: { artist: Artist; onClick: () => void }
             )}
             {artist.primary_genre && (
               <span style={{
-                fontSize: '10px',
+                fontSize: '8px',
                 fontWeight: 600,
                 padding: '2px 7px',
                 borderRadius: '4px',
