@@ -7,7 +7,7 @@
 body {
   font-family: 'Work Sans', var(--font-work-sans), sans-serif;
   -webkit-font-smoothing: antialiased;
-  background: #f5f4f2;
+  background: #0f0f0f;
 }
 
 /* Scrollbar hiding */
@@ -80,9 +80,9 @@ body {
 .skeleton {
   background: linear-gradient(
     90deg,
-    #e8e7e5 25%,
-    #f0efed 50%,
-    #e8e7e5 75%
+    #1e1e1e 25%,
+    #2a2a2a 50%,
+    #1e1e1e 75%
   );
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
