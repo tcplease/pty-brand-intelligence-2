@@ -21,6 +21,25 @@ interface BrandSuggestion {
   artist_count: number
 }
 
+// ── Brand colors ──────────────────────────────────────
+const Y = '#F9D40A'
+const BG = '#1B1B1B'
+const SURFACE = '#1e1e1e'
+const BORDER = 'rgba(255,255,255,0.08)'
+const W50 = 'rgba(255,255,255,0.5)'
+const W30 = 'rgba(255,255,255,0.3)'
+const GREEN = '#00D26A'
+const BLUE = '#4A9EFF'
+
+const CAREER_COLORS: Record<string, string> = {
+  legendary: '#ef4444',
+  superstar: '#f97316',
+  mainstream: '#F9D40A',
+  'mid-level': '#00D26A',
+  developing: '#4A9EFF',
+  undiscovered: 'rgba(255,255,255,0.3)',
+}
+
 function formatNum(n: number | null): string {
   if (!n) return '—'
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
@@ -38,11 +57,12 @@ function getMomentumColor(score: number | null): string {
 
 function ArtistCard({ artist, onClick }: { artist: Artist; onClick: () => void }) {
   const score = artist.cm_score ? Math.round(Number(artist.cm_score)) : null
+  const careerColor = CAREER_COLORS[artist.career_stage?.toLowerCase() ?? ''] ?? W50
 
   return (
     <a onClick={onClick} className="cursor-pointer block" style={{ color: '#f5f4f2', opacity: artist.is_dimmed ? 0.4 : 1 }}>
-      <div style={{ backgroundColor: '#1e1e1e' }}>
-        <div className="relative" style={{ aspectRatio: '1/1', backgroundColor: '#2a2a2a' }}>
+      <div style={{ backgroundColor: SURFACE, borderRadius: '8px', overflow: 'hidden', border: `1px solid ${BORDER}` }}>
+        <div className="relative" style={{ aspectRatio: '4/3', backgroundColor: '#2a2a2a' }}>
           {artist.image_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={artist.image_url} alt={artist.name} className="w-full h-full object-cover" />
@@ -52,7 +72,7 @@ function ArtistCard({ artist, onClick }: { artist: Artist; onClick: () => void }
             </div>
           )}
           {score !== null && (
-            <div className="absolute font-bold" style={{ top: '8px', right: '8px', backgroundColor: 'rgba(27,27,27,0.9)', color: '#F9D40A', fontSize: '11px', fontWeight: 700, padding: '2px 6px' }}>
+            <div className="absolute font-bold" style={{ top: '8px', right: '8px', backgroundColor: 'rgba(27,27,27,0.9)', color: Y, fontSize: '11px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px' }}>
               {score}
             </div>
           )}
@@ -63,9 +83,35 @@ function ArtistCard({ artist, onClick }: { artist: Artist; onClick: () => void }
           <div className="truncate" style={{ fontSize: '13px', fontWeight: 600, color: '#f5f4f2', marginBottom: '4px' }}>
             {artist.name}
           </div>
-          <div className="flex" style={{ justifyContent: 'space-between', marginBottom: '6px' }}>
-            <span style={{ fontSize: '10px', color: '#888' }}>{artist.career_stage?.toUpperCase() ?? '—'}</span>
-            <span style={{ fontSize: '10px', color: '#777' }}>{artist.primary_genre?.toUpperCase() ?? ''}</span>
+          <div className="flex items-center" style={{ gap: '4px', marginBottom: '6px' }}>
+            {artist.career_stage && (
+              <span style={{
+                fontSize: '10px',
+                fontWeight: 600,
+                padding: '2px 7px',
+                borderRadius: '4px',
+                background: `${careerColor}15`,
+                color: careerColor,
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+              }}>
+                {artist.career_stage}
+              </span>
+            )}
+            {artist.primary_genre && (
+              <span style={{
+                fontSize: '10px',
+                fontWeight: 600,
+                padding: '2px 7px',
+                borderRadius: '4px',
+                background: 'rgba(255,255,255,0.07)',
+                color: W50,
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+              }}>
+                {artist.primary_genre}
+              </span>
+            )}
           </div>
           <div className="flex items-center" style={{ gap: '8px' }}>
             <div className="flex items-center" style={{ gap: '3px' }}>
@@ -119,6 +165,8 @@ export default function RosterPage() {
     sort !== 'score',
   ].filter(Boolean).length
 
+  const hasActiveFilters = genre !== 'All Genres' || !!brandFilter
+
   const fetchArtists = useCallback(async () => {
     setLoading(true)
     try {
@@ -162,147 +210,157 @@ export default function RosterPage() {
     return () => clearTimeout(t)
   }, [brandInput])
 
-  const handleSearchChange = (value: string) => {
+  const clearBrand = () => {
+    setBrandFilter('')
+    setBrandInput('')
+    setBrandSuggestions([])
+  }
+
+  const handleSearch = (value: string) => {
     setSearchInput(value)
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
     searchTimeoutRef.current = setTimeout(() => setSearch(value), 300)
   }
 
-  const clearBrand = () => { setBrandFilter(''); setBrandInput('') }
-
-  const hasActiveFilters = genre !== 'All Genres' || brandFilter
-
   return (
-    <div className="min-h-screen" style={{ backgroundColor: '#0a0a0a', color: '#f5f4f2' }}>
+    <div className="min-h-screen" style={{ background: BG, fontFamily: 'system-ui, sans-serif' }}>
 
-      {/* ── DESKTOP NAV ── */}
-      <nav className="hidden md:flex items-center gap-4 px-6 border-b"
-        style={{ backgroundColor: '#0a0a0a', borderColor: '#1f1f1f', height: '56px' }}>
-        <div className="flex items-center gap-3 mr-2 shrink-0">
-          <img src="/pty-logo.svg" alt="P&TY" className="h-8 w-auto" />
-          <span className="font-bold text-sm tracking-wide" style={{ color: '#fff' }}>BRAND INTELLIGENCE</span>
-        </div>
-        <div className="h-4 w-px" style={{ backgroundColor: '#1f1f1f' }} />
-        <a href="/brand-search" className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>Brand Search</a>
+      {/* NAV */}
+      <nav className="flex items-center px-4 md:px-6 py-3 border-b sticky top-0 z-50"
+        style={{ background: BG, borderColor: BORDER }}>
 
-        <div className="relative flex-1 max-w-sm ml-2">
-          <input
-            placeholder="Search artists..."
-            value={searchInput}
-            onChange={e => handleSearchChange(e.target.value)}
-            className="w-full px-4 py-2 rounded text-sm placeholder-gray-600 border border-gray-800 focus:outline-none focus:border-gray-600"
-            style={{ backgroundColor: '#141414', color: '#fff' }}
-          />
-        </div>
+        {/* Desktop nav */}
+        <div className="hidden md:flex items-center gap-4 w-full">
+          <img src="/pty-logo.svg" alt="P&TY" className="h-7 w-auto shrink-0" />
+          <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
+          <a href="/" className="text-sm font-medium" style={{ color: Y }}>Roster</a>
+          <a href="/discovery" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Discovery</a>
+          <a href="/brand-search" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Brand Search</a>
 
-        <select value={genre} onChange={e => setGenre(e.target.value)}
-          className="px-3 py-2 rounded text-sm border border-gray-800 focus:outline-none cursor-pointer"
-          style={{ backgroundColor: '#141414', color: '#fff' }}>
-          <option>All Genres</option>
-          {genres.map(g => <option key={g}>{g}</option>)}
-        </select>
+          <div className="flex-1" />
 
-        <div className="relative">
-          <input ref={brandInputRef} placeholder="Filter by brand..." value={brandInput}
-            onChange={e => setBrandInput(e.target.value)}
-            onFocus={() => brandSuggestions.length > 0 && setShowSuggestions(true)}
-            onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-            className="w-40 px-3 py-2 rounded text-sm placeholder-gray-600 border border-gray-800 focus:outline-none focus:border-gray-600"
-            style={{ backgroundColor: '#141414', color: '#fff' }} />
-          {showSuggestions && brandSuggestions.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-1 rounded border overflow-hidden z-20"
-              style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
-              {brandSuggestions.map((b, i) => (
-                <button key={i} onMouseDown={() => { setBrandFilter(b.name); setBrandInput(b.name); setShowSuggestions(false) }}
-                  className="w-full px-3 py-2 text-left flex items-center justify-between hover:bg-gray-800 transition-colors">
-                  <span className="text-xs font-semibold text-white">{b.name}</span>
-                  <span className="text-xs" style={{ color: '#6b7280' }}>{b.artist_count}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {brandFilter && (
-          <button onClick={clearBrand}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold shrink-0"
-            style={{ backgroundColor: '#F9D40A', color: '#0a0a0a' }}>
-            {brandFilter} <span className="opacity-60 ml-0.5">✕</span>
-          </button>
-        )}
-
-        <div className="flex items-center gap-1 ml-auto shrink-0">
-          {(['score', 'az', 'reach'] as const).map(s => (
-            <button key={s} onClick={() => setSort(s)}
-              className="px-3 py-1.5 text-xs font-bold tracking-widest rounded"
-              style={{ backgroundColor: sort === s ? '#F9D40A' : 'transparent', color: sort === s ? '#0a0a0a' : '#888' }}>
-              {s === 'score' ? 'SCORE' : s === 'az' ? 'A-Z' : 'REACH'}
-            </button>
-          ))}
-        </div>
-      </nav>
-
-      {/* ── MOBILE NAV ── */}
-      <nav className="flex md:hidden items-center px-4 border-b"
-        style={{ backgroundColor: '#0a0a0a', borderColor: '#1f1f1f', height: '56px' }}>
-        <img src="/pty-logo.svg" alt="P&TY" className="h-7 w-auto shrink-0" />
-
-        {/* Mobile search — expands inline */}
-        {showMobileSearch ? (
-          <div className="flex-1 flex items-center gap-2 ml-3">
+          {/* Desktop search */}
+          <div className="relative">
             <input
-              ref={mobileSearchRef}
               placeholder="Search artists..."
               value={searchInput}
-              onChange={e => handleSearchChange(e.target.value)}
-              autoFocus
-              className="flex-1 px-3 py-2 rounded text-sm border border-gray-800 focus:outline-none"
-              style={{ backgroundColor: '#141414', color: '#fff' }}
+              onChange={e => handleSearch(e.target.value)}
+              className="px-3 py-1.5 rounded-lg border text-xs outline-none w-48"
+              style={{ background: '#1C1C1C', borderColor: BORDER, color: '#fff' }}
             />
-            <button onClick={() => { setShowMobileSearch(false); handleSearchChange('') }} style={{ color: '#888' }}>
-              ✕
-            </button>
           </div>
-        ) : (
+
+          {/* Desktop genre filter */}
+          <select value={genre} onChange={e => setGenre(e.target.value)}
+            className="px-3 py-1.5 rounded-lg border text-xs outline-none"
+            style={{ background: '#1C1C1C', borderColor: BORDER, color: 'rgba(255,255,255,0.8)' }}>
+            <option>All Genres</option>
+            {genres.map(g => <option key={g}>{g}</option>)}
+          </select>
+
+          {/* Desktop brand filter */}
+          <div className="relative">
+            <input
+              ref={brandInputRef}
+              placeholder="Brand affinity..."
+              value={brandInput}
+              onChange={e => setBrandInput(e.target.value)}
+              onFocus={() => brandSuggestions.length > 0 && setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+              className="px-3 py-1.5 rounded-lg border text-xs outline-none w-40"
+              style={{ background: '#1C1C1C', borderColor: brandFilter ? Y : BORDER, color: '#fff' }}
+            />
+            {brandFilter && (
+              <button onClick={clearBrand} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs" style={{ color: '#888' }}>✕</button>
+            )}
+            {showSuggestions && brandSuggestions.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 rounded-lg border overflow-hidden z-20"
+                style={{ backgroundColor: SURFACE, borderColor: '#2a2a2a' }}>
+                {brandSuggestions.slice(0, 5).map((b, i) => (
+                  <button key={i} onMouseDown={() => { setBrandFilter(b.name); setBrandInput(b.name); setShowSuggestions(false) }}
+                    className="w-full px-3 py-2 text-left flex items-center justify-between border-b last:border-0 hover:bg-white/5"
+                    style={{ borderColor: '#2a2a2a' }}>
+                    <span className="text-xs text-white">{b.name}</span>
+                    <span className="text-[10px]" style={{ color: '#6b7280' }}>{b.artist_count}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Desktop sort */}
+          <select value={sort} onChange={e => setSort(e.target.value as any)}
+            className="px-3 py-1.5 rounded-lg border text-xs outline-none"
+            style={{ background: '#1C1C1C', borderColor: BORDER, color: 'rgba(255,255,255,0.8)' }}>
+            <option value="score">CM Score</option>
+            <option value="az">A–Z</option>
+            <option value="reach">Reach</option>
+          </select>
+        </div>
+
+        {/* Mobile nav */}
+        <div className="flex md:hidden items-center justify-between w-full">
+          <div className="flex items-center gap-3">
+            <img src="/pty-logo.svg" alt="P&TY" className="h-6 w-auto" />
+            <div className="h-4 w-px" style={{ backgroundColor: BORDER }} />
+            <a href="/" className="text-sm font-medium" style={{ color: Y }}>Roster</a>
+            <a href="/discovery" className="text-sm" style={{ color: W50 }}>Discovery</a>
+          </div>
           <>
-            <div className="flex-1" />
             {/* Search icon */}
-            <button onClick={() => setShowMobileSearch(true)} className="p-2" style={{ color: '#888' }}>
+            <button onClick={() => {
+              setShowMobileSearch(!showMobileSearch)
+              setTimeout(() => mobileSearchRef.current?.focus(), 100)
+            }} className="p-2" style={{ color: search ? Y : '#888' }}>
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </button>
             {/* Filter icon with badge */}
-            <button onClick={() => setShowFilterDrawer(true)} className="p-2 relative" style={{ color: activeFilterCount > 0 ? '#F9D40A' : '#888' }}>
+            <button onClick={() => setShowFilterDrawer(true)} className="p-2 relative" style={{ color: activeFilterCount > 0 ? Y : '#888' }}>
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18M7 12h10M11 20h2" />
               </svg>
               {activeFilterCount > 0 && (
                 <span className="absolute top-1 right-1 w-4 h-4 rounded-full text-xs font-bold flex items-center justify-center"
-                  style={{ backgroundColor: '#F9D40A', color: '#0a0a0a', fontSize: '9px' }}>
+                  style={{ backgroundColor: Y, color: '#0a0a0a', fontSize: '9px' }}>
                   {activeFilterCount}
                 </span>
               )}
             </button>
           </>
-        )}
+        </div>
       </nav>
+
+      {/* Mobile search bar */}
+      {showMobileSearch && (
+        <div className="md:hidden px-4 py-2 border-b" style={{ borderColor: BORDER, background: BG }}>
+          <input
+            ref={mobileSearchRef}
+            placeholder="Search artists..."
+            value={searchInput}
+            onChange={e => handleSearch(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+            style={{ background: '#1C1C1C', borderColor: BORDER, color: '#fff' }}
+          />
+        </div>
+      )}
 
       {/* Active filter chips — mobile only */}
       {(brandFilter || genre !== 'All Genres') && (
         <div className="flex md:hidden items-center gap-2 px-4 py-2 border-b flex-wrap"
-          style={{ borderColor: '#1f1f1f' }}>
+          style={{ borderColor: BORDER }}>
           {brandFilter && (
             <button onClick={clearBrand}
               className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold"
-              style={{ backgroundColor: '#F9D40A', color: '#0a0a0a' }}>
+              style={{ backgroundColor: Y, color: '#0a0a0a' }}>
               {brandFilter} <span className="opacity-60">✕</span>
             </button>
           )}
           {genre !== 'All Genres' && (
             <button onClick={() => setGenre('All Genres')}
               className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border"
-              style={{ borderColor: '#F9D40A', color: '#F9D40A' }}>
+              style={{ borderColor: Y, color: Y }}>
               {genre} <span className="opacity-60">✕</span>
             </button>
           )}
@@ -321,7 +379,7 @@ export default function RosterPage() {
         {loading ? (
           <div className="flex items-center justify-center h-64">
             <div className="w-8 h-8 rounded-full border-2 animate-spin"
-              style={{ borderColor: '#F9D40A', borderTopColor: 'transparent' }} />
+              style={{ borderColor: Y, borderTopColor: 'transparent' }} />
           </div>
         ) : artists.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64" style={{ color: '#6b7280' }}>
@@ -329,7 +387,7 @@ export default function RosterPage() {
             <div className="text-sm">No artists found</div>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '2px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '4px' }}>
             {artists.map(artist => (
               <ArtistCard key={artist.chartmetric_id} artist={artist}
                 onClick={() => router.push(`/artists/${artist.chartmetric_id}`)} />
@@ -369,7 +427,7 @@ export default function RosterPage() {
                 <label className="text-xs uppercase tracking-wider mb-2 block" style={{ color: '#888' }}>Genre</label>
                 <select value={genre} onChange={e => setGenre(e.target.value)}
                   className="w-full px-3 py-3 rounded-xl text-sm border focus:outline-none"
-                  style={{ backgroundColor: '#1e1e1e', borderColor: '#2a2a2a', color: '#fff' }}>
+                  style={{ backgroundColor: SURFACE, borderColor: '#2a2a2a', color: '#fff' }}>
                   <option>All Genres</option>
                   {genres.map(g => <option key={g}>{g}</option>)}
                 </select>
@@ -384,10 +442,10 @@ export default function RosterPage() {
                     onFocus={() => brandSuggestions.length > 0 && setShowSuggestions(true)}
                     onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                     className="w-full px-3 py-3 rounded-xl text-sm border focus:outline-none"
-                    style={{ backgroundColor: '#1e1e1e', borderColor: brandFilter ? '#F9D40A' : '#2a2a2a', color: '#fff' }} />
+                    style={{ backgroundColor: SURFACE, borderColor: brandFilter ? Y : '#2a2a2a', color: '#fff' }} />
                   {showSuggestions && brandSuggestions.length > 0 && (
                     <div className="absolute bottom-full left-0 right-0 mb-1 rounded-xl border overflow-hidden z-20"
-                      style={{ backgroundColor: '#1e1e1e', borderColor: '#2a2a2a' }}>
+                      style={{ backgroundColor: SURFACE, borderColor: '#2a2a2a' }}>
                       {brandSuggestions.slice(0, 5).map((b, i) => (
                         <button key={i} onMouseDown={() => { setBrandFilter(b.name); setBrandInput(b.name); setShowSuggestions(false) }}
                           className="w-full px-4 py-3 text-left flex items-center justify-between border-b last:border-0"
@@ -409,8 +467,8 @@ export default function RosterPage() {
                     <button key={s} onClick={() => setSort(s)}
                       className="flex-1 py-3 rounded-xl text-sm font-bold border transition-colors"
                       style={{
-                        backgroundColor: sort === s ? '#F9D40A' : 'transparent',
-                        borderColor: sort === s ? '#F9D40A' : '#2a2a2a',
+                        backgroundColor: sort === s ? Y : 'transparent',
+                        borderColor: sort === s ? Y : '#2a2a2a',
                         color: sort === s ? '#0a0a0a' : '#888',
                       }}>
                       {s === 'score' ? 'Score' : s === 'az' ? 'A–Z' : 'Reach'}
@@ -421,7 +479,7 @@ export default function RosterPage() {
 
               <button onClick={() => setShowFilterDrawer(false)}
                 className="w-full py-3 rounded-xl text-sm font-bold"
-                style={{ backgroundColor: '#F9D40A', color: '#0a0a0a' }}>
+                style={{ backgroundColor: Y, color: '#0a0a0a' }}>
                 Show {artists.length} Artists
               </button>
             </div>

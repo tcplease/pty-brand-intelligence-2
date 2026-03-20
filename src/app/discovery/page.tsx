@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 // ── Brand colors ──────────────────────────────────────
 const Y = '#F9D40A'
 const BG = '#1B1B1B'
-const SURFACE = '#242424'
+const SURFACE = '#1e1e1e'
 const SURFACE2 = '#1C1C1C'
 const BORDER = 'rgba(255,255,255,0.08)'
 const W80 = 'rgba(255,255,255,0.8)'
@@ -16,12 +16,12 @@ const GREEN = '#00D26A'
 const BLUE = '#4A9EFF'
 
 const CAREER_COLORS: Record<string, string> = {
-  superstar: Y,
-  legendary: Y,
-  mainstream: BLUE,
-  'mid-level': GREEN,
-  developing: W50,
-  undiscovered: W30,
+  legendary: '#ef4444',
+  superstar: '#f97316',
+  mainstream: '#F9D40A',
+  'mid-level': '#00D26A',
+  developing: '#4A9EFF',
+  undiscovered: 'rgba(255,255,255,0.3)',
 }
 
 // ── Types ─────────────────────────────────────────────
@@ -51,7 +51,7 @@ interface DiscoveryArtist {
 function fmt(n: number | null): string {
   if (!n) return '—'
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`
   return String(n)
 }
 
@@ -69,7 +69,6 @@ function timeAgo(dateStr: string): string {
 function uniqueFestivals(festivals: Festival[]): Festival[] {
   const seen = new Set<string>()
   return festivals.filter(f => {
-    // Dedupe by base name (strip "Weekend One/Two" variants)
     const base = f.festival_name.replace(/\s*\(Weekend (One|Two)\)\s*/i, '').trim()
     if (seen.has(base)) return false
     seen.add(base)
@@ -79,24 +78,7 @@ function uniqueFestivals(festivals: Festival[]): Festival[] {
 
 function primaryGenre(genre: string | null): string {
   if (!genre) return ''
-  // Chartmetric returns comma-separated genres — just take the first
   return genre.split(',')[0].trim()
-}
-
-// ── Badge ─────────────────────────────────────────────
-function Badge({ children, color }: { children: React.ReactNode; color?: string }) {
-  return (
-    <span
-      className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider border"
-      style={{
-        background: `${color || W50}15`,
-        borderColor: `${color || W50}30`,
-        color: color || W50,
-      }}
-    >
-      {children}
-    </span>
-  )
 }
 
 // ── Spinner ───────────────────────────────────────────
@@ -124,17 +106,19 @@ function ArtistCard({
 
   return (
     <div
-      className="rounded-2xl border overflow-hidden transition-all duration-200 hover:border-white/15 cursor-pointer group"
       style={{
         background: SURFACE,
-        borderColor: BORDER,
-        maxWidth: 340,
+        borderRadius: '8px',
+        overflow: 'hidden',
+        border: `1px solid ${BORDER}`,
+        cursor: 'pointer',
         animation: `fadeIn 0.3s ease-out ${index * 0.04}s both`,
       }}
+      className="transition-all duration-200 hover:border-white/15 group"
       onClick={() => onNavigate(artist.chartmetric_id)}
     >
-      {/* Image */}
-      <div className="relative h-40 overflow-hidden">
+      {/* Image — 4:3 with gradient overlay */}
+      <div className="relative overflow-hidden" style={{ aspectRatio: '4/3', backgroundColor: '#2a2a2a' }}>
         {artist.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -144,92 +128,110 @@ function ArtistCard({
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-4xl font-bold"
-            style={{ background: BG, color: W30 }}>
+            style={{ color: W30 }}>
             {artist.name[0]}
           </div>
         )}
-        {/* Bottom gradient */}
-        <div className="absolute inset-x-0 bottom-0 h-20" style={{ background: 'linear-gradient(to top, #242424 0%, transparent 100%)' }} />
+        <div className="absolute inset-x-0 bottom-0 h-20" style={{ background: `linear-gradient(to top, ${SURFACE} 0%, transparent 100%)` }} />
 
-        {/* CM Score top-left */}
         {artist.cm_score != null && (
-          <div className="absolute top-2.5 left-2.5 text-xs font-bold px-2 py-0.5 rounded-md"
-            style={{ background: 'rgba(0,0,0,0.75)', color: Y, backdropFilter: 'blur(4px)' }}>
+          <div className="absolute font-bold" style={{ top: '8px', left: '8px', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(0,0,0,0.75)', color: Y, backdropFilter: 'blur(4px)' }}>
             {Math.round(artist.cm_score)}
           </div>
         )}
 
-        {/* Festival count top-right */}
         {artist.festival_count > 1 && (
-          <div className="absolute top-2.5 right-2.5 text-[10px] font-bold px-2 py-0.5 rounded-md"
-            style={{ background: Y, color: BG }}>
+          <div className="absolute" style={{ top: '8px', right: '8px', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', background: Y, color: BG }}>
             {artist.festival_count} festivals
           </div>
         )}
       </div>
 
       {/* Content */}
-      <div className="px-3.5 pb-3.5 -mt-1">
-        {/* Name + badges */}
-        <h3 className="text-[15px] font-bold text-white leading-tight truncate mb-1">{artist.name}</h3>
-        <div className="flex items-center gap-1.5 mb-2.5">
+      <div style={{ padding: '10px 12px 12px', marginTop: '-2px' }}>
+        <div className="truncate" style={{ fontSize: '13px', fontWeight: 600, color: '#f5f4f2', marginBottom: '5px' }}>
+          {artist.name}
+        </div>
+
+        <div className="flex items-center" style={{ gap: '4px', marginBottom: '8px' }}>
           {artist.career_stage && (
-            <Badge color={careerColor}>{artist.career_stage}</Badge>
+            <span style={{
+              fontSize: '10px', fontWeight: 600, padding: '2px 7px', borderRadius: '4px',
+              background: `${careerColor}15`, color: careerColor,
+              textTransform: 'uppercase', letterSpacing: '0.04em',
+            }}>
+              {artist.career_stage}
+            </span>
           )}
           {genre && (
-            <Badge>{genre}</Badge>
+            <span style={{
+              fontSize: '10px', fontWeight: 600, padding: '2px 7px', borderRadius: '4px',
+              background: 'rgba(255,255,255,0.07)', color: W50,
+              textTransform: 'uppercase', letterSpacing: '0.04em',
+              maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap', display: 'inline-block',
+            }}>
+              {genre}
+            </span>
           )}
         </div>
 
-        {/* Festival chips — detection context */}
         {fests.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-2.5">
+          <div className="flex flex-wrap" style={{ gap: '3px', marginBottom: '8px' }}>
             {fests.slice(0, 2).map((f, i) => {
               const shortName = f.festival_name.replace(/\s*\d{4}$/, '').replace(/\s*presents\s*.*/i, '')
               return (
-                <span key={i} className="text-[10px] font-medium px-2 py-0.5 rounded-full"
-                  style={{ background: `${Y}12`, color: Y, border: `1px solid ${Y}25` }}>
+                <span key={i} style={{
+                  fontSize: '10px', fontWeight: 500, padding: '2px 8px', borderRadius: '12px',
+                  background: `${Y}12`, color: Y,
+                }}>
                   {shortName.length > 20 ? shortName.slice(0, 20) + '…' : shortName}
                 </span>
               )
             })}
             {fests.length > 2 && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: BORDER, color: W30 }}>
+              <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '12px', background: BORDER, color: W30 }}>
                 +{fests.length - 2}
               </span>
             )}
           </div>
         )}
 
-        {/* Social stats */}
-        <div className="flex items-center gap-4 mb-2.5">
-          {[
-            { label: 'Spotify', value: fmt(artist.spotify_followers) },
-            { label: 'IG', value: fmt(artist.instagram_followers) },
-            { label: 'TikTok', value: fmt(artist.tiktok_followers) },
-          ].map(s => (
-            <div key={s.label}>
-              <div className="text-[11px] font-bold text-white leading-none">{s.value}</div>
-              <div className="text-[9px] uppercase tracking-wider mt-0.5" style={{ color: W30 }}>{s.label}</div>
-            </div>
-          ))}
+        <div className="flex items-center" style={{ gap: '8px', marginBottom: '8px' }}>
+          <div className="flex items-center" style={{ gap: '3px' }}>
+            <svg style={{ width: '11px', height: '11px', color: '#888', flexShrink: 0 }} viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+            </svg>
+            <span style={{ fontSize: '11px', color: '#888' }}>{fmt(artist.spotify_followers)}</span>
+          </div>
+          <div className="flex items-center" style={{ gap: '3px' }}>
+            <svg style={{ width: '11px', height: '11px', color: '#888', flexShrink: 0 }} viewBox="0 0 24 24" fill="currentColor">
+              <path d="M7.8 2h8.4C19.4 2 22 4.6 22 7.8v8.4a5.8 5.8 0 0 1-5.8 5.8H7.8C4.6 22 2 19.4 2 16.2V7.8A5.8 5.8 0 0 1 7.8 2m-.2 2A3.6 3.6 0 0 0 4 7.6v8.8C4 18.39 5.61 20 7.6 20h8.8a3.6 3.6 0 0 0 3.6-3.6V7.6C20 5.61 18.39 4 16.4 4H7.6m9.65 1.5a1.25 1.25 0 0 1 1.25 1.25A1.25 1.25 0 0 1 17.25 8 1.25 1.25 0 0 1 16 6.75a1.25 1.25 0 0 1 1.25-1.25M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3z"/>
+            </svg>
+            <span style={{ fontSize: '11px', color: '#888' }}>{fmt(artist.instagram_followers)}</span>
+          </div>
+          <div className="flex items-center" style={{ gap: '3px' }}>
+            <svg style={{ width: '11px', height: '11px', color: '#888', flexShrink: 0 }} viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.78 1.52V6.76a4.85 4.85 0 01-1.01-.07z"/>
+            </svg>
+            <span style={{ fontSize: '11px', color: '#888' }}>{fmt(artist.tiktok_followers)}</span>
+          </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-2 pt-2 border-t" style={{ borderColor: BORDER }}>
+        <div className="flex items-center" style={{ gap: '6px', paddingTop: '8px', borderTop: `1px solid ${BORDER}` }}>
           <div className="relative flex-1">
             <button
               onMouseEnter={() => setShowTooltip(true)}
               onMouseLeave={() => setShowTooltip(false)}
               onClick={(e) => e.stopPropagation()}
-              className="w-full text-[11px] font-semibold py-1.5 rounded-lg opacity-35 cursor-not-allowed"
-              style={{ background: BORDER, color: W50 }}
+              className="w-full"
+              style={{ fontSize: '11px', fontWeight: 600, padding: '5px 0', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', color: W30, border: 'none', cursor: 'not-allowed' }}
             >
               Add to Monday
             </button>
             {showTooltip && (
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1 rounded-lg text-[10px] whitespace-nowrap z-10"
-                style={{ background: '#333', color: W80 }}>
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1 rounded-lg whitespace-nowrap z-10"
+                style={{ fontSize: '10px', background: '#333', color: W80 }}>
                 Coming soon — v2.1
               </div>
             )}
@@ -241,16 +243,15 @@ function ArtistCard({
               onDismiss(artist.chartmetric_id)
             }}
             disabled={dismissing}
-            className="text-[11px] font-medium py-1.5 px-3 rounded-lg transition-colors hover:bg-white/5"
-            style={{ color: W30 }}
+            className="transition-colors hover:bg-white/5"
+            style={{ fontSize: '11px', fontWeight: 500, padding: '5px 10px', borderRadius: '6px', color: W30, background: 'transparent', border: 'none' }}
           >
             {dismissing ? '…' : 'Not Now'}
           </button>
         </div>
 
-        {/* Detected timestamp */}
-        <div className="text-right mt-1.5">
-          <span className="text-[9px]" style={{ color: W30 }}>Detected {timeAgo(artist.created_at)}</span>
+        <div style={{ textAlign: 'right', marginTop: '4px' }}>
+          <span style={{ fontSize: '9px', color: W30 }}>Detected {timeAgo(artist.created_at)}</span>
         </div>
       </div>
 
@@ -299,7 +300,6 @@ export default function DiscoveryPage() {
     setArtists(prev => prev.filter(a => a.chartmetric_id !== cmId))
   }
 
-  // Filter and sort
   let filtered = artists
   if (search) {
     const q = search.toLowerCase()
@@ -320,7 +320,7 @@ export default function DiscoveryPage() {
     <div className="min-h-screen" style={{ background: BG, fontFamily: 'system-ui, sans-serif' }}>
 
       {/* NAV */}
-      <nav className="flex items-center gap-4 px-5 py-3 border-b sticky top-0 z-50"
+      <nav className="flex items-center gap-4 px-4 md:px-6 py-3 border-b sticky top-0 z-50"
         style={{ background: BG, borderColor: BORDER }}>
         <img src="/pty-logo.svg" alt="P&TY" className="h-7 w-auto shrink-0" />
         <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
@@ -329,10 +329,10 @@ export default function DiscoveryPage() {
         <a href="/brand-search" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Brand Search</a>
       </nav>
 
-      <div className="px-5 py-5 max-w-7xl mx-auto">
+      <div className="px-2 md:px-6 py-5">
 
         {/* Header */}
-        <div className="flex items-start justify-between mb-5">
+        <div className="flex items-start justify-between mb-5 px-2 md:px-0">
           <div>
             <div className="flex items-center gap-3 mb-0.5">
               <h1 className="text-xl font-bold text-white">Discovery</h1>
@@ -347,8 +347,7 @@ export default function DiscoveryPage() {
         </div>
 
         {/* Controls */}
-        <div className="flex flex-wrap items-center gap-2.5 mb-5">
-          {/* Period toggle */}
+        <div className="flex flex-wrap items-center gap-2.5 mb-5 px-2 md:px-0">
           <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: BORDER }}>
             {(['week', 'month', 'all'] as const).map(p => (
               <button key={p} onClick={() => setPeriod(p)}
@@ -362,7 +361,6 @@ export default function DiscoveryPage() {
             ))}
           </div>
 
-          {/* Search */}
           <input
             type="text"
             placeholder="Search artists..."
@@ -372,7 +370,6 @@ export default function DiscoveryPage() {
             style={{ background: SURFACE2, borderColor: BORDER, color: '#fff' }}
           />
 
-          {/* Stage filter */}
           <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}
             className="px-3 py-1.5 rounded-lg border text-xs outline-none"
             style={{ background: SURFACE2, borderColor: BORDER, color: W80 }}>
@@ -380,7 +377,6 @@ export default function DiscoveryPage() {
             {stages.map(s => <option key={s} value={s!}>{s}</option>)}
           </select>
 
-          {/* Sort */}
           <select value={sortBy} onChange={e => setSortBy(e.target.value as any)}
             className="px-3 py-1.5 rounded-lg border text-xs outline-none"
             style={{ background: SURFACE2, borderColor: BORDER, color: W80 }}>
@@ -390,12 +386,10 @@ export default function DiscoveryPage() {
           </select>
         </div>
 
-        {/* Loading */}
         {loading && (
           <div className="flex items-center justify-center py-20"><Spinner /></div>
         )}
 
-        {/* Empty */}
         {!loading && filtered.length === 0 && (
           <div className="text-center py-20" style={{ color: W30 }}>
             <div className="text-4xl mb-3 opacity-30">📡</div>
@@ -408,9 +402,8 @@ export default function DiscoveryPage() {
           </div>
         )}
 
-        {/* Card grid */}
         {!loading && filtered.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '4px' }}>
             {filtered.map((artist, i) => (
               <ArtistCard
                 key={artist.chartmetric_id}
