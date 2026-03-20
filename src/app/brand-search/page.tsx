@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 
 // ── Constants ─────────────────────────────────────────
-const BG = '#0a0a0a'
+const BG = '#0f0f0f'
 const SURFACE = '#141414'
 const SURFACE2 = '#1e1e1e'
 const BORDER = 'rgba(255,255,255,0.08)'
@@ -208,20 +208,13 @@ export default function BrandSearchPage() {
     <div className="min-h-screen" style={{ backgroundColor: BG, color: '#f5f4f2' }}>
 
       {/* NAV */}
-      <nav className="flex items-center gap-4 px-6 border-b" style={{ backgroundColor: BG, borderColor: BORDER, height: '56px' }}>
-        <div className="flex items-center gap-3 shrink-0">
-          <img src="/pty-logo.svg" alt="P&TY" className="h-8 w-auto" />
-          <span className="font-bold text-sm tracking-wide hidden sm:block text-white">BRAND INTELLIGENCE</span>
-        </div>
-        <div className="h-4 w-px mx-2 hidden sm:block" style={{ backgroundColor: BORDER }} />
-        <button
-          onClick={() => router.push('/')}
-          className="text-sm transition-colors hover:text-white"
-          style={{ color: W50 }}
-        >
-          Roster
-        </button>
-        <span className="text-sm font-semibold text-white">Brand Search</span>
+      <nav className="flex items-center gap-4 px-4 md:px-6 py-3 border-b sticky top-0 z-50"
+        style={{ background: BG, borderColor: BORDER }}>
+        <img src="/pty-logo.svg" alt="P&TY" className="h-7 w-auto shrink-0" />
+        <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
+        <a href="/" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Roster</a>
+        <a href="/discovery" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Discovery</a>
+        <a href="/brand-search" className="text-sm font-medium" style={{ color: Y }}>Brand Search</a>
       </nav>
 
       <div className="max-w-4xl mx-auto px-5 py-8">
