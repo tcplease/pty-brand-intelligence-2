@@ -17,7 +17,7 @@ async function fetchAllTourItems() {
   let cursor: string | null = null
 
   do {
-    const cursorArg = cursor ? `, cursor: "${cursor}"` : ''
+    const cursorArg: string = cursor ? `, cursor: "${cursor}"` : ''
     const query = `{
       boards(ids: ${TOURS_BOARD_ID}) {
         items_page(limit: 100${cursorArg}) {
