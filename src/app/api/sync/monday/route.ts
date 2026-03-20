@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { supabase, createServiceClient } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
+import { createServiceClient } from '@/lib/supabase'
 
 const BOARD_ID = '2696356409'
 const CRM_BOARD_ID = '2696356486'
