@@ -56,10 +56,10 @@ export async function GET(request: Request) {
     const hiddenIds = new Set<number>()
     const dimmedIds = new Set<number>()
 
-    for (const [id, info] of Array.from(stageMap.entries())) {
+    stageMap.forEach((info, id) => {
       if (info.allLost) hiddenIds.add(id)
       else if (info.isDimmed) dimmedIds.add(id)
-    }
+    })
 
     // Brand filter path
     if (brand) {
