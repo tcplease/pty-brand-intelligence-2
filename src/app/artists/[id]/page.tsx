@@ -515,19 +515,18 @@ ${deals.length > 0 ? `Tours: ${deals.map(d => `${d.tour ?? 'Untitled'} (${d.tota
     <div className="min-h-screen" style={{ background: BG, fontFamily: 'system-ui, sans-serif' }}>
 
       {/* NAV */}
-      <nav className="flex items-center gap-3 px-5 py-3 border-b sticky top-0 z-50"
-        style={{ background: BG, borderColor: BORDER }}>
-        <img src="/pty-logo.svg" alt="P&TY" className="h-8 w-auto" />
-        <button onClick={() => router.push('/')}
-          className="flex items-center gap-1.5 text-sm transition-colors hover:text-white"
-          style={{ color: W50 }}>
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-          ROSTER
-        </button>
-        {copyMsg && <span className="ml-auto text-xs font-semibold" style={{ color: GREEN }}>{copyMsg}</span>}
-      </nav>
+<nav className="flex items-center gap-4 px-5 py-3 border-b sticky top-0 z-50"
+  style={{ background: BG, borderColor: BORDER }}>
+  <img src="/pty-logo.svg" alt="P&TY" className="h-7 w-auto shrink-0" />
+  <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
+  <a href="/" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>
+    Roster
+  </a>
+  <a href="/brand-search" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>
+    Brand Search
+  </a>
+  {copyMsg && <span className="ml-auto text-xs font-semibold" style={{ color: GREEN }}>{copyMsg}</span>}
+</nav>
 
       <div className="px-5 py-6 max-w-5xl mx-auto">
 
