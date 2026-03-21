@@ -310,7 +310,7 @@ export default function DiscoveryPage() {
       {/* NAV */}
       <nav className="flex items-center gap-4 px-4 md:px-6 py-3 border-b sticky top-0 z-50"
         style={{ background: BG, borderColor: BORDER }}>
-        <img src="/pty-logo.svg" alt="P&TY" className="h-7 w-auto shrink-0" />
+        <img src="/pty-logo.svg" alt="P&TY" className="h-9 w-auto shrink-0" />
         <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
         <a href="/" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Roster</a>
         <a href="/discovery" className="text-sm font-medium" style={{ color: Y }}>Discovery</a>

@@ -181,7 +181,7 @@ export default function RosterPage() {
   const [searchInput, setSearchInput] = useState('')
   const [genre, setGenre] = useState('All Genres')
   const [genres, setGenres] = useState<string[]>([])
-  const [stageFilter, setStageFilter] = useState('All Stages')
+  const [stageFilter, setStageFilter] = useState('All Deal Stages')
   const [stageOptions, setStageOptions] = useState<string[]>([])
   const [sort, setSort] = useState<'score' | 'az' | 'reach'>('score')
   const [showFilterDrawer, setShowFilterDrawer] = useState(false)
@@ -195,7 +195,7 @@ export default function RosterPage() {
     sort !== 'score',
   ].filter(Boolean).length
 
-  const hasActiveFilters = genre !== 'All Genres' || stageFilter !== 'All Stages'
+  const hasActiveFilters = genre !== 'All Genres' || stageFilter !== 'All Deal Stages'
 
   const fetchArtists = useCallback(async () => {
     setLoading(true)
@@ -222,7 +222,7 @@ export default function RosterPage() {
   useEffect(() => {
     let result = [...allArtists]
     if (genre !== 'All Genres') result = result.filter(a => a.primary_genre === genre)
-    if (stageFilter !== 'All Stages') result = result.filter(a => a.deal_stage === stageFilter)
+    if (stageFilter !== 'All Deal Stages') result = result.filter(a => a.deal_stage === stageFilter)
     if (sort === 'score') result.sort((a, b) => (b.cm_score ?? 0) - (a.cm_score ?? 0))
     if (sort === 'az') result.sort((a, b) => a.name.localeCompare(b.name))
     if (sort === 'reach') result.sort((a, b) => (b.spotify_followers ?? 0) - (a.spotify_followers ?? 0))
@@ -244,7 +244,7 @@ export default function RosterPage() {
 
         {/* Desktop nav */}
         <div className="hidden md:flex items-center gap-4 w-full">
-          <img src="/pty-logo.svg" alt="P&TY" className="h-7 w-auto shrink-0" />
+          <img src="/pty-logo.svg" alt="P&TY" className="h-9 w-auto shrink-0" />
           <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
           <a href="/" className="text-sm font-medium" style={{ color: Y }}>Roster</a>
           <a href="/discovery" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Discovery</a>
@@ -266,8 +266,8 @@ export default function RosterPage() {
           {/* Desktop stage filter */}
           <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}
             className="px-3 py-1.5 rounded-lg border text-xs outline-none"
-            style={{ background: '#1C1C1C', borderColor: stageFilter !== 'All Stages' ? Y : BORDER, color: 'rgba(255,255,255,0.8)' }}>
-            <option>All Stages</option>
+            style={{ background: '#1C1C1C', borderColor: stageFilter !== 'All Deal Stages' ? Y : BORDER, color: 'rgba(255,255,255,0.8)' }}>
+            <option>All Deal Stages</option>
             {stageOptions.map(s => <option key={s} value={s}>{STAGE_SHORT_LABELS[s] ?? s}</option>)}
           </select>
 
@@ -342,8 +342,8 @@ export default function RosterPage() {
       {hasActiveFilters && (
         <div className="flex md:hidden items-center gap-2 px-4 py-2 border-b flex-wrap"
           style={{ borderColor: BORDER }}>
-          {stageFilter !== 'All Stages' && (
-            <button onClick={() => setStageFilter('All Stages')}
+          {stageFilter !== 'All Deal Stages' && (
+            <button onClick={() => setStageFilter('All Deal Stages')}
               className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold"
               style={{ backgroundColor: Y, color: '#0a0a0a' }}>
               {STAGE_SHORT_LABELS[stageFilter] ?? stageFilter} <span className="opacity-60">✕</span>
@@ -407,7 +407,7 @@ export default function RosterPage() {
               <div className="flex items-center justify-between mb-5">
                 <h3 className="font-bold text-white">Filters & Sort</h3>
                 {hasActiveFilters && (
-                  <button onClick={() => { setGenre('All Genres'); setStageFilter('All Stages') }}
+                  <button onClick={() => { setGenre('All Genres'); setStageFilter('All Deal Stages') }}
                     className="text-xs" style={{ color: '#888' }}>
                     Clear all
                   </button>
@@ -419,8 +419,8 @@ export default function RosterPage() {
                 <label className="text-xs uppercase tracking-wider mb-2 block" style={{ color: '#888' }}>Deal Stage</label>
                 <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}
                   className="w-full px-3 py-3 rounded-xl text-sm border focus:outline-none"
-                  style={{ backgroundColor: SURFACE, borderColor: stageFilter !== 'All Stages' ? Y : '#2a2a2a', color: '#fff' }}>
-                  <option>All Stages</option>
+                  style={{ backgroundColor: SURFACE, borderColor: stageFilter !== 'All Deal Stages' ? Y : '#2a2a2a', color: '#fff' }}>
+                  <option>All Deal Stages</option>
                   {stageOptions.map(s => <option key={s} value={s}>{STAGE_SHORT_LABELS[s] ?? s}</option>)}
                 </select>
               </div>
