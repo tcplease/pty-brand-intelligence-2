@@ -361,7 +361,7 @@ export default function DiscoveryPage() {
           <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}
             className="px-3 py-1.5 rounded-lg border text-xs outline-none"
             style={{ background: SURFACE2, borderColor: BORDER, color: W80 }}>
-            <option value="">All Stages</option>
+            <option value="">All Career Stages</option>
             {stages.map(s => <option key={s} value={s!}>{s}</option>)}
           </select>
 

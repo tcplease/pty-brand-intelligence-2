@@ -191,7 +191,7 @@ export default function RosterPage() {
 
   const activeFilterCount = [
     genre !== 'All Genres',
-    stageFilter !== 'All Stages',
+    stageFilter !== 'All Deal Stages',
     sort !== 'score',
   ].filter(Boolean).length
 
