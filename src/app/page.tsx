@@ -14,11 +14,7 @@ interface Artist {
   instagram_followers: number | null
   tiktok_followers: number | null
   is_dimmed?: boolean
-}
-
-interface BrandSuggestion {
-  name: string
-  artist_count: number
+  deal_stage?: string | null
 }
 
 // ── Brand colors ──────────────────────────────────────
@@ -29,7 +25,7 @@ const BORDER = 'rgba(255,255,255,0.08)'
 const W50 = 'rgba(255,255,255,0.5)'
 const W30 = 'rgba(255,255,255,0.3)'
 const GREEN = '#00D26A'
-const BLUE = '#4A9EFF'
+const BLUE = '#60bae1'
 
 const CAREER_COLORS: Record<string, string> = {
   legendary: '#ef4444',
@@ -38,6 +34,28 @@ const CAREER_COLORS: Record<string, string> = {
   'mid-level': '#00D26A',
   developing: '#4A9EFF',
   undiscovered: 'rgba(255,255,255,0.3)',
+}
+
+const STAGE_COLORS: Record<string, string> = {
+  'Outbound - No Contact': '#666',
+  'Outbound - Automated Contact': '#666',
+  'Prospect - Direct Sales Agent Contact': BLUE,
+  'Active Leads (Contact Has Responded)': BLUE,
+  'Proposal (financials submitted)': Y,
+  'Negotiation (Terms Being Discussed)': Y,
+  'Finalizing On-Sale (Terms Agreed)': GREEN,
+  'Won (Final On-Sale Planned)': GREEN,
+}
+
+const STAGE_SHORT_LABELS: Record<string, string> = {
+  'Outbound - No Contact': 'Outbound (No Contact)',
+  'Outbound - Automated Contact': 'Outbound (Automated)',
+  'Prospect - Direct Sales Agent Contact': 'Prospect',
+  'Active Leads (Contact Has Responded)': 'Active Lead',
+  'Proposal (financials submitted)': 'Proposal',
+  'Negotiation (Terms Being Discussed)': 'Negotiation',
+  'Finalizing On-Sale (Terms Agreed)': 'Finalizing',
+  'Won (Final On-Sale Planned)': 'Won',
 }
 
 function formatNum(n: number | null): string {
@@ -55,12 +73,13 @@ function getMomentumColor(score: number | null): string {
   return '#f87171'
 }
 
-function ArtistCard({ artist, onClick }: { artist: Artist; onClick: () => void }) {
+function ArtistCard({ artist, href }: { artist: Artist; href: string }) {
   const score = artist.cm_score ? Math.round(Number(artist.cm_score)) : null
   const careerColor = CAREER_COLORS[artist.career_stage?.toLowerCase() ?? ''] ?? W50
+  const stageColor = artist.deal_stage ? (STAGE_COLORS[artist.deal_stage] ?? W50) : null
 
   return (
-    <a onClick={onClick} className="cursor-pointer block" style={{ color: '#f5f4f2', opacity: artist.is_dimmed ? 0.4 : 1 }}>
+    <a href={href} className="block" style={{ color: '#f5f4f2', opacity: artist.is_dimmed ? 0.4 : 1 }}>
       <div style={{ backgroundColor: SURFACE, borderRadius: '8px', overflow: 'hidden', border: `1px solid ${BORDER}` }}>
         <div className="relative" style={{ aspectRatio: '4/3', backgroundColor: '#2a2a2a' }}>
           {artist.image_url ? (
@@ -83,7 +102,7 @@ function ArtistCard({ artist, onClick }: { artist: Artist; onClick: () => void }
           <div className="truncate" style={{ fontSize: '13px', fontWeight: 600, color: '#f5f4f2', marginBottom: '4px' }}>
             {artist.name}
           </div>
-          <div className="flex items-center" style={{ gap: '4px', marginBottom: '6px' }}>
+          <div className="flex items-center flex-wrap" style={{ gap: '4px', marginBottom: '6px' }}>
             {artist.career_stage && (
               <span style={{
                 fontSize: '8px',
@@ -110,6 +129,20 @@ function ArtistCard({ artist, onClick }: { artist: Artist; onClick: () => void }
                 letterSpacing: '0.04em',
               }}>
                 {artist.primary_genre}
+              </span>
+            )}
+            {stageColor && artist.deal_stage && (
+              <span style={{
+                fontSize: '8px',
+                fontWeight: 600,
+                padding: '2px 7px',
+                borderRadius: '4px',
+                background: `${stageColor}15`,
+                color: stageColor,
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+              }}>
+                {STAGE_SHORT_LABELS[artist.deal_stage] ?? artist.deal_stage}
               </span>
             )}
           </div>
@@ -148,73 +181,53 @@ export default function RosterPage() {
   const [searchInput, setSearchInput] = useState('')
   const [genre, setGenre] = useState('All Genres')
   const [genres, setGenres] = useState<string[]>([])
-  const [brandFilter, setBrandFilter] = useState('')
-  const [brandInput, setBrandInput] = useState('')
-  const [brandSuggestions, setBrandSuggestions] = useState<BrandSuggestion[]>([])
-  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [stageFilter, setStageFilter] = useState('All Stages')
+  const [stageOptions, setStageOptions] = useState<string[]>([])
   const [sort, setSort] = useState<'score' | 'az' | 'reach'>('score')
   const [showFilterDrawer, setShowFilterDrawer] = useState(false)
   const [showMobileSearch, setShowMobileSearch] = useState(false)
-  const brandInputRef = useRef<HTMLInputElement>(null)
   const searchTimeoutRef = useRef<NodeJS.Timeout>()
   const mobileSearchRef = useRef<HTMLInputElement>(null)
 
   const activeFilterCount = [
     genre !== 'All Genres',
-    !!brandFilter,
+    stageFilter !== 'All Stages',
     sort !== 'score',
   ].filter(Boolean).length
 
-  const hasActiveFilters = genre !== 'All Genres' || !!brandFilter
+  const hasActiveFilters = genre !== 'All Genres' || stageFilter !== 'All Stages'
 
   const fetchArtists = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
-      if (brandFilter) params.set('brand', brandFilter)
       if (search) params.set('search', search)
       params.set('limit', '500')
       const res = await fetch(`/api/artists?${params}`)
       const data = await res.json()
       const list: Artist[] = data.artists || []
       setAllArtists(list)
-      if (!brandFilter && !search) {
+      if (!search) {
         const gs = new Set(list.map((a: Artist) => a.primary_genre).filter(Boolean) as string[])
         setGenres(Array.from(gs).sort())
+        const stages = new Set(list.map((a: Artist) => a.deal_stage).filter(Boolean) as string[])
+        setStageOptions(Array.from(stages))
       }
     } catch (err) { console.error(err) }
     setLoading(false)
-  }, [search, brandFilter])
+  }, [search])
 
   useEffect(() => { fetchArtists() }, [fetchArtists])
 
   useEffect(() => {
     let result = [...allArtists]
     if (genre !== 'All Genres') result = result.filter(a => a.primary_genre === genre)
+    if (stageFilter !== 'All Stages') result = result.filter(a => a.deal_stage === stageFilter)
     if (sort === 'score') result.sort((a, b) => (b.cm_score ?? 0) - (a.cm_score ?? 0))
     if (sort === 'az') result.sort((a, b) => a.name.localeCompare(b.name))
     if (sort === 'reach') result.sort((a, b) => (b.spotify_followers ?? 0) - (a.spotify_followers ?? 0))
     setArtists(result)
-  }, [allArtists, genre, sort])
-
-  useEffect(() => {
-    if (brandInput.length < 2) { setBrandSuggestions([]); return }
-    const t = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/brands?q=${encodeURIComponent(brandInput)}`)
-        const data = await res.json()
-        setBrandSuggestions(data.brands || [])
-        setShowSuggestions(true)
-      } catch {}
-    }, 200)
-    return () => clearTimeout(t)
-  }, [brandInput])
-
-  const clearBrand = () => {
-    setBrandFilter('')
-    setBrandInput('')
-    setBrandSuggestions([])
-  }
+  }, [allArtists, genre, stageFilter, sort])
 
   const handleSearch = (value: string) => {
     setSearchInput(value)
@@ -250,43 +263,21 @@ export default function RosterPage() {
             />
           </div>
 
+          {/* Desktop stage filter */}
+          <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}
+            className="px-3 py-1.5 rounded-lg border text-xs outline-none"
+            style={{ background: '#1C1C1C', borderColor: stageFilter !== 'All Stages' ? Y : BORDER, color: 'rgba(255,255,255,0.8)' }}>
+            <option>All Stages</option>
+            {stageOptions.map(s => <option key={s} value={s}>{STAGE_SHORT_LABELS[s] ?? s}</option>)}
+          </select>
+
           {/* Desktop genre filter */}
           <select value={genre} onChange={e => setGenre(e.target.value)}
             className="px-3 py-1.5 rounded-lg border text-xs outline-none"
-            style={{ background: '#1C1C1C', borderColor: BORDER, color: 'rgba(255,255,255,0.8)' }}>
+            style={{ background: '#1C1C1C', borderColor: genre !== 'All Genres' ? Y : BORDER, color: 'rgba(255,255,255,0.8)' }}>
             <option>All Genres</option>
             {genres.map(g => <option key={g}>{g}</option>)}
           </select>
-
-          {/* Desktop brand filter */}
-          <div className="relative">
-            <input
-              ref={brandInputRef}
-              placeholder="Brand affinity..."
-              value={brandInput}
-              onChange={e => setBrandInput(e.target.value)}
-              onFocus={() => brandSuggestions.length > 0 && setShowSuggestions(true)}
-              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-              className="px-3 py-1.5 rounded-lg border text-xs outline-none w-40"
-              style={{ background: '#1C1C1C', borderColor: brandFilter ? Y : BORDER, color: '#fff' }}
-            />
-            {brandFilter && (
-              <button onClick={clearBrand} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs" style={{ color: '#888' }}>✕</button>
-            )}
-            {showSuggestions && brandSuggestions.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 rounded-lg border overflow-hidden z-20"
-                style={{ backgroundColor: SURFACE, borderColor: '#2a2a2a' }}>
-                {brandSuggestions.slice(0, 5).map((b, i) => (
-                  <button key={i} onMouseDown={() => { setBrandFilter(b.name); setBrandInput(b.name); setShowSuggestions(false) }}
-                    className="w-full px-3 py-2 text-left flex items-center justify-between border-b last:border-0 hover:bg-white/5"
-                    style={{ borderColor: '#2a2a2a' }}>
-                    <span className="text-xs text-white">{b.name}</span>
-                    <span className="text-[10px]" style={{ color: '#6b7280' }}>{b.artist_count}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
 
           {/* Desktop sort */}
           <select value={sort} onChange={e => setSort(e.target.value as any)}
@@ -300,16 +291,17 @@ export default function RosterPage() {
 
         {/* Mobile nav */}
         <div className="flex md:hidden items-center justify-between w-full">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <img src="/pty-logo.svg" alt="P&TY" className="h-6 w-auto" />
             <div className="h-4 w-px" style={{ backgroundColor: BORDER }} />
             <a href="/" className="text-sm font-medium" style={{ color: Y }}>Roster</a>
             <a href="/discovery" className="text-sm" style={{ color: W50 }}>Discovery</a>
+            <a href="/brand-search" className="text-sm" style={{ color: W50 }}>Brands</a>
           </div>
-          <>
+          <div className="flex items-center">
             {/* Search icon */}
             <button onClick={() => {
-              setShowMobileSearch(!showMobileSearch)
+              setShowMobileSearch(prev => !prev)
               setTimeout(() => mobileSearchRef.current?.focus(), 100)
             }} className="p-2" style={{ color: search ? Y : '#888' }}>
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -328,7 +320,7 @@ export default function RosterPage() {
                 </span>
               )}
             </button>
-          </>
+          </div>
         </div>
       </nav>
 
@@ -347,14 +339,14 @@ export default function RosterPage() {
       )}
 
       {/* Active filter chips — mobile only */}
-      {(brandFilter || genre !== 'All Genres') && (
+      {hasActiveFilters && (
         <div className="flex md:hidden items-center gap-2 px-4 py-2 border-b flex-wrap"
           style={{ borderColor: BORDER }}>
-          {brandFilter && (
-            <button onClick={clearBrand}
+          {stageFilter !== 'All Stages' && (
+            <button onClick={() => setStageFilter('All Stages')}
               className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold"
               style={{ backgroundColor: Y, color: '#0a0a0a' }}>
-              {brandFilter} <span className="opacity-60">✕</span>
+              {STAGE_SHORT_LABELS[stageFilter] ?? stageFilter} <span className="opacity-60">✕</span>
             </button>
           )}
           {genre !== 'All Genres' && (
@@ -390,7 +382,7 @@ export default function RosterPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '4px' }}>
             {artists.map(artist => (
               <ArtistCard key={artist.chartmetric_id} artist={artist}
-                onClick={() => router.push(`/artists/${artist.chartmetric_id}`)} />
+                href={`/artists/${artist.chartmetric_id}`} />
             ))}
           </div>
         )}
@@ -415,11 +407,22 @@ export default function RosterPage() {
               <div className="flex items-center justify-between mb-5">
                 <h3 className="font-bold text-white">Filters & Sort</h3>
                 {hasActiveFilters && (
-                  <button onClick={() => { setGenre('All Genres'); clearBrand() }}
+                  <button onClick={() => { setGenre('All Genres'); setStageFilter('All Stages') }}
                     className="text-xs" style={{ color: '#888' }}>
                     Clear all
                   </button>
                 )}
+              </div>
+
+              {/* Deal Stage */}
+              <div className="mb-5">
+                <label className="text-xs uppercase tracking-wider mb-2 block" style={{ color: '#888' }}>Deal Stage</label>
+                <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}
+                  className="w-full px-3 py-3 rounded-xl text-sm border focus:outline-none"
+                  style={{ backgroundColor: SURFACE, borderColor: stageFilter !== 'All Stages' ? Y : '#2a2a2a', color: '#fff' }}>
+                  <option>All Stages</option>
+                  {stageOptions.map(s => <option key={s} value={s}>{STAGE_SHORT_LABELS[s] ?? s}</option>)}
+                </select>
               </div>
 
               {/* Genre */}
@@ -427,36 +430,10 @@ export default function RosterPage() {
                 <label className="text-xs uppercase tracking-wider mb-2 block" style={{ color: '#888' }}>Genre</label>
                 <select value={genre} onChange={e => setGenre(e.target.value)}
                   className="w-full px-3 py-3 rounded-xl text-sm border focus:outline-none"
-                  style={{ backgroundColor: SURFACE, borderColor: '#2a2a2a', color: '#fff' }}>
+                  style={{ backgroundColor: SURFACE, borderColor: genre !== 'All Genres' ? Y : '#2a2a2a', color: '#fff' }}>
                   <option>All Genres</option>
                   {genres.map(g => <option key={g}>{g}</option>)}
                 </select>
-              </div>
-
-              {/* Brand */}
-              <div className="mb-5">
-                <label className="text-xs uppercase tracking-wider mb-2 block" style={{ color: '#888' }}>Brand Affinity</label>
-                <div className="relative">
-                  <input placeholder="Filter by brand..." value={brandInput}
-                    onChange={e => setBrandInput(e.target.value)}
-                    onFocus={() => brandSuggestions.length > 0 && setShowSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                    className="w-full px-3 py-3 rounded-xl text-sm border focus:outline-none"
-                    style={{ backgroundColor: SURFACE, borderColor: brandFilter ? Y : '#2a2a2a', color: '#fff' }} />
-                  {showSuggestions && brandSuggestions.length > 0 && (
-                    <div className="absolute bottom-full left-0 right-0 mb-1 rounded-xl border overflow-hidden z-20"
-                      style={{ backgroundColor: SURFACE, borderColor: '#2a2a2a' }}>
-                      {brandSuggestions.slice(0, 5).map((b, i) => (
-                        <button key={i} onMouseDown={() => { setBrandFilter(b.name); setBrandInput(b.name); setShowSuggestions(false) }}
-                          className="w-full px-4 py-3 text-left flex items-center justify-between border-b last:border-0"
-                          style={{ borderColor: '#2a2a2a' }}>
-                          <span className="text-sm text-white">{b.name}</span>
-                          <span className="text-xs" style={{ color: '#6b7280' }}>{b.artist_count}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </div>
 
               {/* Sort */}

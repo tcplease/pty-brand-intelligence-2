@@ -97,6 +97,7 @@ export async function GET(request: Request) {
             follower_count: row.follower_count,
           },
           is_dimmed: dimmedIds.has(row.intel_artists.chartmetric_id),
+          deal_stage: stageMap.get(row.intel_artists.chartmetric_id)?.bestStage ?? null,
         }))
         .filter((a: any) => !hiddenIds.has(a.chartmetric_id))
 
@@ -126,6 +127,7 @@ export async function GET(request: Request) {
       .map((a: any) => ({
         ...a,
         is_dimmed: dimmedIds.has(a.chartmetric_id),
+        deal_stage: stageMap.get(a.chartmetric_id)?.bestStage ?? null,
       }))
 
     return NextResponse.json({ artists, count: artists.length })

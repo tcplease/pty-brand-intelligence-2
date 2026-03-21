@@ -3,6 +3,9 @@
 * {
   box-sizing: border-box;
 }
+a, button, [role="button"], input, select, textarea {
+  touch-action: manipulation;
+}
 
 body {
   font-family: 'Work Sans', var(--font-work-sans), sans-serif;
