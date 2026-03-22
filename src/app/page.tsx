@@ -246,7 +246,7 @@ export default function RosterPage() {
         <div className="hidden md:flex items-center gap-4 w-full">
           <img src="/pty-logo.svg" alt="P&TY" className="h-9 w-auto shrink-0" />
           <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
-          <a href="/" className="text-sm font-medium" style={{ color: Y }}>Roster</a>
+          <a href="/" className="text-sm font-medium" style={{ color: Y }}>Deals & Leads</a>
           <a href="/discovery" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Discovery</a>
           <a href="/brand-search" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Brand Search</a>
 
