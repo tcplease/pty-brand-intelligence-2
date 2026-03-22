@@ -537,7 +537,7 @@ ${deals.length > 0 ? `Tours: ${deals.map(d => `${d.tour ?? 'Untitled'} (${d.tota
   <img src="/pty-logo.svg" alt="P&TY" className="h-7 w-auto shrink-0" />
   <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
   <a href="/" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>
-    Deals & Leads
+    Pipeline
   </a>
   <a href="/discovery" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>
     Discovery
