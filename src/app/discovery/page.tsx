@@ -129,7 +129,7 @@ function ArtistCard({
       onClick={() => onNavigate(artist.chartmetric_id)}
     >
       {/* Image — fixed height */}
-      <div className="relative overflow-hidden" style={{ height: '160px', backgroundColor: '#2a2a2a' }}>
+      <div className="relative overflow-hidden aspect-square md:aspect-auto md:h-[160px]" style={{ backgroundColor: '#2a2a2a' }}>
         {artist.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -426,7 +426,7 @@ export default function DiscoveryPage() {
         )}
 
         {!loading && filtered.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '4px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '4px' }}>
             {filtered.map((artist, i) => (
               <ArtistCard
                 key={artist.chartmetric_id}

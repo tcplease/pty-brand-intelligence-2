@@ -82,7 +82,7 @@ function ArtistCard({ artist, href }: { artist: Artist; href: string }) {
   return (
     <a href={href} className="block h-full" style={{ color: '#f5f4f2', opacity: artist.is_dimmed ? 0.4 : 1 }}>
       <div className="flex flex-col h-full" style={{ backgroundColor: SURFACE, borderRadius: '8px', overflow: 'hidden', border: `1px solid ${BORDER}` }}>
-        <div className="relative aspect-[4/3] md:aspect-auto md:h-[160px]" style={{ backgroundColor: '#2a2a2a' }}>
+        <div className="relative overflow-hidden h-[160px] sm:h-[160px]" style={{ backgroundColor: '#2a2a2a' }}>
           {artist.image_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={artist.image_url} alt={artist.name} className="w-full h-full object-cover" />
@@ -391,7 +391,7 @@ export default function RosterPage() {
             <div className="text-sm">No artists found</div>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '4px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '4px' }}>
             {artists.map(artist => (
               <ArtistCard key={artist.chartmetric_id} artist={artist}
                 href={`/artists/${artist.chartmetric_id}`} />

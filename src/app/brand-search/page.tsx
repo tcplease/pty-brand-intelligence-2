@@ -116,7 +116,7 @@ function MatchArtistCard({ artist, query, onClick }: {
     <div onClick={onClick} className="block h-full cursor-pointer" style={{ color: '#f5f4f2' }}>
       <div className="flex flex-col h-full" style={{ backgroundColor: SURFACE, borderRadius: '8px', overflow: 'hidden', border: `1px solid ${BORDER}` }}>
         {/* Image */}
-        <div className="relative shrink-0 h-[200px] md:h-[160px]" style={{ backgroundColor: '#2a2a2a' }}>
+        <div className="relative shrink-0 aspect-square md:aspect-auto md:h-[160px]" style={{ backgroundColor: '#2a2a2a' }}>
           {artist.image_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={artist.image_url} alt={artist.name} className="w-full h-full object-cover" />
@@ -516,7 +516,7 @@ export default function BrandSearchPage() {
             </div>
 
             {/* Card grid — matches Pipeline/Radar */}
-            <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
+            <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
               {filteredResults.map(artist => (
                 <MatchArtistCard
                   key={artist.chartmetric_id}
