@@ -29,7 +29,7 @@ async function getArtistMeta(cmId: number, token: string) {
     name: obj.name || null,
     image_url: obj.image_url || null,
     primary_genre: obj.genres?.primary?.name || null,
-    cm_score: obj.cm_score || null,
+    cm_score: obj.cm_artist_score ?? obj.cm_score ?? null,
     general_manager: obj.general_manager || null,
   }
 }
@@ -187,7 +187,7 @@ export async function POST(request: Request) {
           name: meta?.name || artist.name,
           image_url: meta?.image_url,
           primary_genre: meta?.primary_genre,
-          cm_score: careerData.score ?? meta?.cm_score,
+          cm_score: meta?.cm_score,
           general_manager: meta?.general_manager,
           spotify_artist_id: spotifyId,
           career_stage: careerData.stage,
