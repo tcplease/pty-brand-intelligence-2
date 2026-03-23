@@ -540,10 +540,10 @@ ${deals.length > 0 ? `Tours: ${deals.map(d => `${d.tour ?? 'Untitled'} (${d.tota
     Pipeline
   </a>
   <a href="/discovery" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>
-    Discovery
+    Radar
   </a>
   <a href="/brand-search" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>
-    Brand Search
+    Match
   </a>
   {copyMsg && <span className="ml-auto text-xs font-semibold" style={{ color: GREEN }}>{copyMsg}</span>}
 </nav>

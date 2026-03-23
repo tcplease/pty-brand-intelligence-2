@@ -153,7 +153,19 @@ export interface DiscoveryFeedItem {
   management_company: string | null
 }
 
-// Monday.com Stage values
+// Monday.com Stage values — canonical order for all dropdowns/displays
+export const STAGE_ORDER = [
+  'Outbound - No Contact',
+  'Outbound - Automated Contact',
+  'Prospect - Direct Sales Agent Contact',
+  'Active Leads (Contact Has Responded)',
+  'Proposal (financials submitted)',
+  'Negotiation (Terms Being Discussed)',
+  'Finalizing On-Sale (Terms Agreed)',
+  'Won (Final On-Sale Planned)',
+  'Lost',
+] as const
+
 export const HIDDEN_STAGES = ['Lost'] as const
 export const DIMMED_STAGES = ['Outbound - No Contact', 'Outbound - Automated Contact'] as const
 

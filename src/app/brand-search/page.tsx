@@ -64,66 +64,70 @@ function ResultCard({ artist, query, onClick }: {
   const hasBrand = !!query.brand
   const demoPct = artist.demographic_pct
   const affinityScore = artist.affinity_score
+  const hasDemoFilter = query.ages.length > 0 || query.gender !== 'any'
 
   return (
     <div
       onClick={onClick}
-      className="cursor-pointer flex items-center gap-4 px-4 py-3 rounded-xl border transition-colors hover:border-white/20"
+      className="cursor-pointer flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors hover:border-white/20"
       style={{ background: SURFACE2, borderColor: BORDER }}
     >
       {/* Photo */}
-      <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0" style={{ backgroundColor: '#2a2a2a' }}>
+      <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0" style={{ backgroundColor: '#2a2a2a' }}>
         {artist.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={artist.image_url} alt={artist.name} className="w-full h-full object-cover" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center font-bold" style={{ color: '#444' }}>
+          <div className="w-full h-full flex items-center justify-center font-bold text-sm" style={{ color: '#444' }}>
             {artist.name[0]}
           </div>
         )}
       </div>
 
-      {/* Info */}
+      {/* Primary: name — Secondary: career stage + genre */}
       <div className="flex-1 min-w-0">
-        <div className="font-semibold text-sm text-white truncate">{artist.name}</div>
-        <div className="flex items-center gap-2 mt-0.5">
-          <span style={{ fontSize: '11px', color: W50 }}>{artist.career_stage?.toUpperCase()}</span>
+        <div className="font-semibold text-sm text-white">{artist.name}</div>
+        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+          {artist.career_stage && (
+            <span style={{ fontSize: '10px', fontWeight: 600, color: W50, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              {artist.career_stage}
+            </span>
+          )}
+          {artist.career_stage && artist.primary_genre && (
+            <span style={{ color: W30, fontSize: '10px' }}>·</span>
+          )}
           {artist.primary_genre && (
-            <>
-              <span style={{ color: W30, fontSize: '11px' }}>·</span>
-              <span style={{ fontSize: '11px', color: W30 }}>{artist.primary_genre.toUpperCase()}</span>
-            </>
+            <span style={{ fontSize: '10px', color: W30, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              {artist.primary_genre}
+            </span>
           )}
         </div>
       </div>
 
-      {/* Demographic match */}
-      {(query.ages.length > 0 || query.gender !== 'any') && (
-        <div className="text-right shrink-0">
-          <div className="font-bold text-sm" style={{ color: demoPct >= 30 ? GREEN : W80 }}>
+      {/* Tertiary: Demographic match % */}
+      {hasDemoFilter && (
+        <div className="text-right shrink-0 pl-2">
+          <div className="font-bold text-sm font-mono" style={{ color: demoPct >= 30 ? GREEN : W80 }}>
             {demoPct.toFixed(1)}%
           </div>
-          <div style={{ fontSize: '10px', color: W30 }}>
-            {query.gender !== 'any' ? query.gender : 'audience'}
-            {query.ages.length > 0 ? ` ${query.ages.join('/')}` : ''}
-          </div>
+          <div style={{ fontSize: '9px', color: W30, whiteSpace: 'nowrap' }}>demo</div>
         </div>
       )}
 
-      {/* Brand affinity */}
+      {/* Tertiary: Brand affinity */}
       {hasBrand && affinityScore > 0 && (
-        <div className="text-right shrink-0">
-          <div className="font-bold text-sm" style={{ color: affinityScore >= 2 ? Y : W50 }}>
+        <div className="text-right shrink-0 pl-2">
+          <div className="font-bold text-sm font-mono" style={{ color: affinityScore >= 2 ? Y : W50 }}>
             {affinityScore.toFixed(2)}x
           </div>
-          <div style={{ fontSize: '10px', color: W30 }}>affinity</div>
+          <div style={{ fontSize: '9px', color: W30 }}>affinity</div>
         </div>
       )}
 
-      {/* Combined score */}
+      {/* Score badge — smaller, muted, right-aligned */}
       <div
-        className="w-10 h-10 rounded-lg flex items-center justify-center font-bold text-xs shrink-0"
-        style={{ backgroundColor: 'rgba(249,212,10,0.15)', color: Y }}
+        className="w-8 h-8 rounded-md flex items-center justify-center font-bold shrink-0 ml-1"
+        style={{ backgroundColor: 'rgba(249,212,10,0.1)', color: W50, fontSize: '11px' }}
       >
         {Math.round(artist.combined_score)}
       </div>
@@ -213,15 +217,15 @@ export default function BrandSearchPage() {
         <img src="/pty-logo.svg" alt="P&TY" className="h-9 w-auto shrink-0" />
         <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
         <a href="/" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Pipeline</a>
-        <a href="/discovery" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Discovery</a>
-        <a href="/brand-search" className="text-sm font-medium" style={{ color: Y }}>Brand Search</a>
+        <a href="/discovery" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Radar</a>
+        <a href="/brand-search" className="text-sm font-medium" style={{ color: Y }}>Match</a>
       </nav>
 
       <div className="max-w-4xl mx-auto px-5 py-8">
 
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white mb-1">Find Artists for a Brief</h1>
+          <h1 className="text-2xl font-bold text-white mb-1">Match</h1>
           <p style={{ color: W50, fontSize: '14px' }}>
             Describe the target audience and brand — we'll surface artists whose fans match.
           </p>

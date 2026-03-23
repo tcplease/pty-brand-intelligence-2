@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { STAGE_ORDER } from '@/types'
 
 interface Artist {
   chartmetric_id: number
@@ -210,8 +211,8 @@ export default function RosterPage() {
       if (!search) {
         const gs = new Set(list.map((a: Artist) => a.primary_genre).filter(Boolean) as string[])
         setGenres(Array.from(gs).sort())
-        const stages = new Set(list.map((a: Artist) => a.deal_stage).filter(Boolean) as string[])
-        setStageOptions(Array.from(stages))
+        const stageSet = new Set(list.map((a: Artist) => a.deal_stage).filter(Boolean) as string[])
+        setStageOptions(STAGE_ORDER.filter(s => stageSet.has(s)))
       }
     } catch (err) { console.error(err) }
     setLoading(false)
@@ -247,8 +248,8 @@ export default function RosterPage() {
           <img src="/pty-logo.svg" alt="P&TY" className="h-9 w-auto shrink-0" />
           <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
           <a href="/" className="text-sm font-medium" style={{ color: Y }}> Pipeline</a>
-          <a href="/discovery" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Discovery</a>
-          <a href="/brand-search" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Brand Search</a>
+          <a href="/discovery" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Radar</a>
+          <a href="/brand-search" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Match</a>
 
           <div className="flex-1" />
 
@@ -295,8 +296,8 @@ export default function RosterPage() {
             <img src="/pty-logo.svg" alt="P&TY" className="h-6 w-auto" />
             <div className="h-4 w-px" style={{ backgroundColor: BORDER }} />
             <a href="/" className="text-sm font-medium" style={{ color: Y }}>Pipeline</a>
-            <a href="/discovery" className="text-sm" style={{ color: W50 }}>Discovery</a>
-            <a href="/brand-search" className="text-sm" style={{ color: W50 }}>Brands</a>
+            <a href="/discovery" className="text-sm" style={{ color: W50 }}>Radar</a>
+            <a href="/brand-search" className="text-sm" style={{ color: W50 }}>Match</a>
           </div>
           <div className="flex items-center">
             {/* Search icon */}

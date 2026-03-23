@@ -313,8 +313,8 @@ export default function DiscoveryPage() {
         <img src="/pty-logo.svg" alt="P&TY" className="h-9 w-auto shrink-0" />
         <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
         <a href="/" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Pipeline</a>
-        <a href="/discovery" className="text-sm font-medium" style={{ color: Y }}>Discovery</a>
-        <a href="/brand-search" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Brand Search</a>
+        <a href="/discovery" className="text-sm font-medium" style={{ color: Y }}>Radar</a>
+        <a href="/brand-search" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Match</a>
       </nav>
 
       <div className="px-2 md:px-6 py-5">
@@ -323,7 +323,7 @@ export default function DiscoveryPage() {
         <div className="flex items-start justify-between mb-5 px-2 md:px-0">
           <div>
             <div className="flex items-center gap-3 mb-0.5">
-              <h1 className="text-xl font-bold text-white">Discovery</h1>
+              <h1 className="text-xl font-bold text-white">Radar</h1>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${Y}22`, color: Y }}>
                 {filtered.length} artists
               </span>
@@ -368,7 +368,7 @@ export default function DiscoveryPage() {
           <select value={minFestivals} onChange={e => setMinFestivals(parseInt(e.target.value))}
             className="px-3 py-1.5 rounded-lg border text-xs outline-none"
             style={{ background: SURFACE2, borderColor: BORDER, color: W80 }}>
-            <option value="0">All Festivals</option>
+            <option value="0">Any Festival Count</option>
             <option value="2">2+ Festivals</option>
             <option value="3">3+ Festivals</option>
             <option value="4">4+ Festivals</option>
@@ -377,9 +377,9 @@ export default function DiscoveryPage() {
           <select value={sortBy} onChange={e => setSortBy(e.target.value as any)}
             className="px-3 py-1.5 rounded-lg border text-xs outline-none"
             style={{ background: SURFACE2, borderColor: BORDER, color: W80 }}>
-            <option value="festivals">Most Festivals</option>
-            <option value="score">Highest CM Score</option>
-            <option value="recent">Most Recent</option>
+            <option value="festivals">Sort: Festival Count</option>
+            <option value="score">Sort: CM Score</option>
+            <option value="recent">Sort: Date Added</option>
           </select>
         </div>
 
