@@ -1,6 +1,21 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+const HIDDEN_STAGES = ['Lost', 'Tour Canceled', 'Fell Off (Not Lost)']
+const STAGE_PRIORITY: Record<string, number> = {
+  'Lost': 0, 'Tour Canceled': 1, 'Fell Off (Not Lost)': 2,
+  'Outbound - No Contact': 3, 'Outbound - Automated Contact': 4,
+  'Prospect - Direct Sales Agent Contact': 5,
+  'Active Leads (Contact Has Responded)': 6,
+  'Proposal (financials submitted)': 7,
+  'Negotiation (Terms Being Discussed)': 8,
+  'Finalizing On-Sale (Terms Agreed)': 9,
+  'Won (Final On-Sale Planned)': 10,
+}
+function stagePriority(stage: string | null): number {
+  return stage ? (STAGE_PRIORITY[stage] ?? -1) : -1
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const brand = url.searchParams.get('brand') || ''
@@ -20,9 +35,39 @@ export async function GET(request: Request) {
         age_13_17_pct, age_18_24_pct, age_25_34_pct,
         age_35_44_pct, age_45_64_pct, age_65_plus_pct
       `)
+      .eq('discovery_status', 'pipeline')
       .not('cm_last_refreshed_at', 'is', null)
 
     if (artistError) throw artistError
+
+    // 1b. Get deal stages from Monday items
+    const { data: mondayStages } = await supabase
+      .from('intel_monday_items')
+      .select('chartmetric_id, stage, last_show')
+      .not('chartmetric_id', 'is', null)
+
+    const today = new Date().toISOString().split('T')[0]
+    const dealStageMap = new Map<number, string | null>()
+    const seenIds = new Set<number>()
+    for (const item of mondayStages || []) {
+      const id = item.chartmetric_id as number
+      const stage = item.stage as string | null
+      const lastShow = item.last_show as string | null
+      const isHiddenStage = stage === null || HIDDEN_STAGES.includes(stage)
+      const isExpired = lastShow != null && lastShow < today
+      const isInactive = isHiddenStage || isExpired
+      seenIds.add(id)
+      if (isInactive) continue
+      const existing = dealStageMap.get(id)
+      if (!existing || stagePriority(stage) > stagePriority(existing)) {
+        dealStageMap.set(id, stage)
+      }
+    }
+    // Artists in Monday but with ALL deals inactive should be hidden
+    const hiddenIds = new Set<number>()
+    for (const id of seenIds) {
+      if (!dealStageMap.has(id)) hiddenIds.add(id)
+    }
 
     // 2. Get brand/sector affinities if specified
     let affinityMap = new Map<number, number>()
@@ -103,9 +148,12 @@ export async function GET(request: Request) {
         demographic_pct: Math.round(demographicPct * 10) / 10,
         affinity_score: affinityScore,
         combined_score: Math.round(combinedScore * 10) / 10,
+        deal_stage: dealStageMap.get(artist.chartmetric_id) ?? null,
       }
     })
     .filter((a: any) => {
+      // Exclude artists with no active deal (all inactive or no Monday data)
+      if (!a.deal_stage) return false
       // Must meet demographic threshold
       if (ages.length > 0 || gender !== 'any') {
         if (a.demographic_pct < threshold) return false

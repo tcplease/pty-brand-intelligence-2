@@ -5,14 +5,46 @@ import { useRouter } from 'next/navigation'
 
 // ── Constants ─────────────────────────────────────────
 const BG = '#0f0f0f'
-const SURFACE = '#141414'
+const SURFACE = '#1e1e1e'
 const SURFACE2 = '#1e1e1e'
 const BORDER = 'rgba(255,255,255,0.08)'
 const Y = '#F9D40A'
-const W80 = 'rgba(255,255,255,0.8)'
 const W50 = 'rgba(255,255,255,0.5)'
 const W30 = 'rgba(255,255,255,0.3)'
 const GREEN = '#00D26A'
+
+const CAREER_COLORS: Record<string, string> = {
+  legendary: '#ef4444',
+  superstar: '#f97316',
+  mainstream: '#F9D40A',
+  'mid-level': '#00D26A',
+  developing: '#4A9EFF',
+  undiscovered: 'rgba(255,255,255,0.3)',
+}
+
+const BLUE = '#60bae1'
+
+const STAGE_COLORS: Record<string, string> = {
+  'Outbound - No Contact': '#666',
+  'Outbound - Automated Contact': '#666',
+  'Prospect - Direct Sales Agent Contact': BLUE,
+  'Active Leads (Contact Has Responded)': BLUE,
+  'Proposal (financials submitted)': Y,
+  'Negotiation (Terms Being Discussed)': Y,
+  'Finalizing On-Sale (Terms Agreed)': GREEN,
+  'Won (Final On-Sale Planned)': GREEN,
+}
+
+const STAGE_SHORT_LABELS: Record<string, string> = {
+  'Outbound - No Contact': 'Outbound (No Contact)',
+  'Outbound - Automated Contact': 'Outbound (Automated)',
+  'Prospect - Direct Sales Agent Contact': 'Prospect',
+  'Active Leads (Contact Has Responded)': 'Active Lead',
+  'Proposal (financials submitted)': 'Proposal',
+  'Negotiation (Terms Being Discussed)': 'Negotiation',
+  'Finalizing On-Sale (Terms Agreed)': 'Finalizing',
+  'Won (Final On-Sale Planned)': 'Won',
+}
 
 const AGE_RANGES = ['13-17', '18-24', '25-34', '35-44', '45-64', '65+']
 
@@ -38,11 +70,14 @@ interface Artist {
   cm_score: number | null
   primary_genre: string | null
   spotify_followers: number | null
+  instagram_followers: number | null
+  tiktok_followers: number | null
   audience_male_pct: number | null
   audience_female_pct: number | null
   demographic_pct: number
   affinity_score: number
   combined_score: number
+  deal_stage: string | null
 }
 
 interface BrandSuggestion { name: string; artist_count: number }
@@ -55,81 +90,122 @@ function formatNum(n: number | null): string {
   return String(n)
 }
 
-// ── Result Card ───────────────────────────────────────
-function ResultCard({ artist, query, onClick }: {
+function getMomentumColor(score: number | null): string {
+  if (!score) return '#555'
+  if (score >= 95) return '#4ade80'
+  if (score >= 85) return '#F9D40A'
+  if (score >= 70) return '#ff9800'
+  return '#f87171'
+}
+
+// ── Artist Card (matches Pipeline/Radar) ──────────────
+function MatchArtistCard({ artist, query, onClick }: {
   artist: Artist
   query: { brand: string; gender: string; ages: string[] }
   onClick: () => void
 }) {
+  const score = artist.cm_score ? Math.round(Number(artist.cm_score)) : null
+  const careerColor = CAREER_COLORS[artist.career_stage?.toLowerCase() ?? ''] ?? W50
+  const stageColor = artist.deal_stage ? (STAGE_COLORS[artist.deal_stage] ?? W50) : null
   const hasBrand = !!query.brand
+  const hasDemoFilter = query.ages.length > 0 || query.gender !== 'any'
   const demoPct = artist.demographic_pct
   const affinityScore = artist.affinity_score
-  const hasDemoFilter = query.ages.length > 0 || query.gender !== 'any'
 
   return (
-    <div
-      onClick={onClick}
-      className="cursor-pointer flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors hover:border-white/20"
-      style={{ background: SURFACE2, borderColor: BORDER }}
-    >
-      {/* Photo */}
-      <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0" style={{ backgroundColor: '#2a2a2a' }}>
-        {artist.image_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={artist.image_url} alt={artist.name} className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center font-bold text-sm" style={{ color: '#444' }}>
-            {artist.name[0]}
-          </div>
-        )}
-      </div>
-
-      {/* Primary: name — Secondary: career stage + genre */}
-      <div className="flex-1 min-w-0">
-        <div className="font-semibold text-sm text-white">{artist.name}</div>
-        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-          {artist.career_stage && (
-            <span style={{ fontSize: '10px', fontWeight: 600, color: W50, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              {artist.career_stage}
-            </span>
+    <div onClick={onClick} className="block h-full cursor-pointer" style={{ color: '#f5f4f2' }}>
+      <div className="flex flex-col h-full" style={{ backgroundColor: SURFACE, borderRadius: '8px', overflow: 'hidden', border: `1px solid ${BORDER}` }}>
+        {/* Image */}
+        <div className="relative shrink-0 h-[200px] md:h-[160px]" style={{ backgroundColor: '#2a2a2a' }}>
+          {artist.image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={artist.image_url} alt={artist.name} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center font-bold text-4xl" style={{ color: '#444' }}>
+              {artist.name[0]}
+            </div>
           )}
-          {artist.career_stage && artist.primary_genre && (
-            <span style={{ color: W30, fontSize: '10px' }}>·</span>
+          {score !== null && (
+            <div className="absolute font-bold" style={{ top: '8px', right: '8px', backgroundColor: 'rgba(27,27,27,0.9)', color: Y, fontSize: '11px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px' }}>
+              {score}
+            </div>
           )}
-          {artist.primary_genre && (
-            <span style={{ fontSize: '10px', color: W30, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              {artist.primary_genre}
-            </span>
+          <div className="absolute rounded-full" style={{ top: '10px', left: '8px', width: '7px', height: '7px', backgroundColor: getMomentumColor(artist.cm_score) }} />
+
+        </div>
+
+        {/* Info */}
+        <div className="flex-1 flex flex-col" style={{ padding: '10px 12px 12px' }}>
+          <div className="truncate" style={{ fontSize: '13px', fontWeight: 600, color: '#f5f4f2', marginBottom: '2px' }}>
+            {artist.name}
+          </div>
+          {/* Match scores */}
+          {(hasDemoFilter || hasBrand) && (
+            <div className="flex items-center gap-2 mb-1">
+              {hasDemoFilter && demoPct > 0 && (
+                <span className="font-bold font-mono" style={{ fontSize: '10px', color: '#9c9b99' }}>
+                  {demoPct.toFixed(0)}% demo
+                </span>
+              )}
+              {hasBrand && affinityScore > 0 && (
+                <span className="font-bold font-mono" style={{ fontSize: '10px', color: '#9c9b99' }}>
+                  {affinityScore.toFixed(1)}x affinity
+                </span>
+              )}
+            </div>
           )}
-        </div>
-      </div>
-
-      {/* Tertiary: Demographic match % */}
-      {hasDemoFilter && (
-        <div className="text-right shrink-0 pl-2">
-          <div className="font-bold text-sm font-mono" style={{ color: demoPct >= 30 ? GREEN : W80 }}>
-            {demoPct.toFixed(1)}%
+          <div className="flex flex-col" style={{ gap: '1px', marginBottom: '8px' }}>
+            {artist.primary_genre && (
+              <div style={{ lineHeight: 1 }}>
+                <span style={{
+                  fontSize: '8px', fontWeight: 600, padding: '2px 7px', borderRadius: '4px',
+                  background: 'rgba(255,255,255,0.07)', color: W50,
+                  textTransform: 'uppercase', letterSpacing: '0.04em', display: 'inline-block',
+                }}>{artist.primary_genre}</span>
+              </div>
+            )}
+            {artist.career_stage && (
+              <div style={{ lineHeight: 1 }}>
+                <span style={{
+                  fontSize: '8px', fontWeight: 600, padding: '2px 7px', borderRadius: '4px',
+                  background: `${careerColor}15`, color: careerColor,
+                  textTransform: 'uppercase', letterSpacing: '0.04em', display: 'inline-block',
+                }}>{artist.career_stage}</span>
+              </div>
+            )}
+            {stageColor && artist.deal_stage && (
+              <div style={{ lineHeight: 1 }}>
+                <span style={{
+                  fontSize: '8px', fontWeight: 600, padding: '2px 7px', borderRadius: '4px',
+                  background: `${stageColor}15`, color: stageColor,
+                  textTransform: 'uppercase', letterSpacing: '0.04em', display: 'inline-block',
+                }}>{STAGE_SHORT_LABELS[artist.deal_stage] ?? artist.deal_stage}</span>
+              </div>
+            )}
           </div>
-          <div style={{ fontSize: '9px', color: W30, whiteSpace: 'nowrap' }}>demo</div>
-        </div>
-      )}
 
-      {/* Tertiary: Brand affinity */}
-      {hasBrand && affinityScore > 0 && (
-        <div className="text-right shrink-0 pl-2">
-          <div className="font-bold text-sm font-mono" style={{ color: affinityScore >= 2 ? Y : W50 }}>
-            {affinityScore.toFixed(2)}x
+          {/* Social stats pinned to bottom */}
+          <div className="mt-auto flex items-center" style={{ gap: '8px' }}>
+            <div className="flex items-center" style={{ gap: '3px' }}>
+              <svg style={{ width: '11px', height: '11px', color: '#888', flexShrink: 0 }} viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+              </svg>
+              <span style={{ fontSize: '11px', color: '#888' }}>{formatNum(artist.spotify_followers)}</span>
+            </div>
+            <div className="flex items-center" style={{ gap: '3px' }}>
+              <svg style={{ width: '11px', height: '11px', color: '#888', flexShrink: 0 }} viewBox="0 0 24 24" fill="currentColor">
+                <path d="M7.8 2h8.4C19.4 2 22 4.6 22 7.8v8.4a5.8 5.8 0 0 1-5.8 5.8H7.8C4.6 22 2 19.4 2 16.2V7.8A5.8 5.8 0 0 1 7.8 2m-.2 2A3.6 3.6 0 0 0 4 7.6v8.8C4 18.39 5.61 20 7.6 20h8.8a3.6 3.6 0 0 0 3.6-3.6V7.6C20 5.61 18.39 4 16.4 4H7.6m9.65 1.5a1.25 1.25 0 0 1 1.25 1.25A1.25 1.25 0 0 1 17.25 8 1.25 1.25 0 0 1 16 6.75a1.25 1.25 0 0 1 1.25-1.25M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3z"/>
+              </svg>
+              <span style={{ fontSize: '11px', color: '#888' }}>{formatNum(artist.instagram_followers)}</span>
+            </div>
+            <div className="flex items-center" style={{ gap: '3px' }}>
+              <svg style={{ width: '11px', height: '11px', color: '#888', flexShrink: 0 }} viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.78 1.52V6.76a4.85 4.85 0 01-1.01-.07z"/>
+              </svg>
+              <span style={{ fontSize: '11px', color: '#888' }}>{formatNum(artist.tiktok_followers)}</span>
+            </div>
           </div>
-          <div style={{ fontSize: '9px', color: W30 }}>affinity</div>
         </div>
-      )}
-
-      {/* Score badge — smaller, muted, right-aligned */}
-      <div
-        className="w-8 h-8 rounded-md flex items-center justify-center font-bold shrink-0 ml-1"
-        style={{ backgroundColor: 'rgba(249,212,10,0.1)', color: W50, fontSize: '11px' }}
-      >
-        {Math.round(artist.combined_score)}
       </div>
     </div>
   )
@@ -148,14 +224,18 @@ export default function BrandSearchPage() {
   const [gender, setGender] = useState<'any' | 'female' | 'male'>('any')
   const [threshold, setThreshold] = useState(20)
   const [showSectors, setShowSectors] = useState(false)
+  const [showFilters, setShowFilters] = useState(true)
 
   // Results
   const [results, setResults] = useState<Artist[]>([])
   const [loading, setLoading] = useState(false)
   const [hasSearched, setHasSearched] = useState(false)
 
+  // Career stage filter
+  const [careerFilter, setCareerFilter] = useState<string>('All')
+  const careerStages = ['All', 'Legendary', 'Superstar', 'Mainstream', 'Mid-Level', 'Developing', 'Undiscovered']
+
   const brandInputRef = useRef<HTMLInputElement>(null)
-  const searchTimeout = useRef<NodeJS.Timeout>()
 
   // Brand autocomplete
   useEffect(() => {
@@ -166,10 +246,18 @@ export default function BrandSearchPage() {
         const data = await res.json()
         setBrandSuggestions(data.brands || [])
         setShowSuggestions(true)
-      } catch {}
+      } catch { /* ignore */ }
     }, 200)
     return () => clearTimeout(t)
   }, [brandInput])
+
+  // Auto re-search when demographic filters change (only after initial search)
+  useEffect(() => {
+    if (!hasSearched || !hasBrandSelected) return
+    const t = setTimeout(() => runSearch(), 300)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAges, gender, threshold])
 
   const toggleAge = (age: string) => {
     setSelectedAges(prev =>
@@ -196,7 +284,8 @@ export default function BrandSearchPage() {
     setLoading(false)
   }, [brandQuery, gender, selectedAges, threshold])
 
-  const hasFilters = brandQuery || selectedAges.length > 0 || gender !== 'any'
+  const hasBrandSelected = !!brandQuery
+  const hasFilters = hasBrandSelected || selectedAges.length > 0 || gender !== 'any'
 
   const clearAll = () => {
     setBrandInput('')
@@ -206,7 +295,13 @@ export default function BrandSearchPage() {
     setThreshold(20)
     setResults([])
     setHasSearched(false)
+    setCareerFilter('All')
   }
+
+  // Filter results by career stage client-side
+  const filteredResults = careerFilter === 'All'
+    ? results
+    : results.filter(a => a.career_stage?.toLowerCase() === careerFilter.toLowerCase())
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: BG, color: '#f5f4f2' }}>
@@ -221,36 +316,25 @@ export default function BrandSearchPage() {
         <a href="/brand-search" className="text-sm font-medium" style={{ color: Y }}>Match</a>
       </nav>
 
-      <div className="max-w-4xl mx-auto px-5 py-8">
+      <div className="px-4 md:px-6 py-6 max-w-[1600px] mx-auto">
 
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white mb-1">Match</h1>
-          <p style={{ color: W50, fontSize: '14px' }}>
-            Describe the target audience and brand — we'll surface artists whose fans match.
-          </p>
-        </div>
+        {/* Compact filter bar — always visible */}
+        <div className="mb-6 rounded-xl border p-4" style={{ background: SURFACE, borderColor: BORDER }}>
 
-        {/* Filter panel */}
-        <div className="rounded-2xl border p-6 mb-6" style={{ background: SURFACE, borderColor: BORDER }}>
-
-          {/* Brand / sector search */}
-          <div className="mb-6">
-            <label className="text-xs font-semibold uppercase tracking-wider mb-2 block" style={{ color: W50 }}>
-              Brand or Category <span style={{ color: W30 }}>(optional)</span>
-            </label>
-            <div className="relative">
+          {/* Row 1: Brand search + Find button */}
+          <div className="flex items-center gap-3 mb-3">
+            <div className="relative flex-1">
               <input
                 ref={brandInputRef}
                 value={brandInput}
                 onChange={e => { setBrandInput(e.target.value); setBrandQuery('') }}
                 onKeyDown={e => {
-                  if (e.key === 'Enter') { setBrandQuery(brandInput); setShowSuggestions(false) }
+                  if (e.key === 'Enter' && brandInput) { setBrandQuery(brandInput); setShowSuggestions(false); runSearch() }
                 }}
                 onFocus={() => brandSuggestions.length > 0 && setShowSuggestions(true)}
                 onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                placeholder="Search for Nike, Adidas, fitness brands..."
-                className="w-full px-4 py-3 rounded-xl border text-base outline-none transition-colors"
+                placeholder="Brand or sector (required)"
+                className="w-full px-3 py-2 rounded-lg border text-sm outline-none transition-colors"
                 inputMode="search" autoCorrect="off" autoCapitalize="off" spellCheck={false}
                 style={{
                   background: SURFACE2,
@@ -261,7 +345,7 @@ export default function BrandSearchPage() {
               {brandQuery && (
                 <button
                   onClick={() => { setBrandInput(''); setBrandQuery('') }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs p-1"
                   style={{ color: W30 }}
                 >✕</button>
               )}
@@ -271,7 +355,7 @@ export default function BrandSearchPage() {
                   {brandSuggestions.slice(0, 8).map((b, i) => (
                     <button key={i}
                       onMouseDown={() => { setBrandQuery(b.name); setBrandInput(b.name); setShowSuggestions(false) }}
-                      className="w-full px-4 py-2.5 text-left flex items-center justify-between hover:bg-white/5 transition-colors border-b last:border-0"
+                      className="w-full px-4 py-2 text-left flex items-center justify-between hover:bg-white/5 active:bg-white/10 transition-colors border-b last:border-0"
                       style={{ borderColor: BORDER }}>
                       <span className="text-sm text-white">{b.name}</span>
                       <span className="text-xs" style={{ color: W30 }}>{b.artist_count} artists</span>
@@ -280,160 +364,161 @@ export default function BrandSearchPage() {
                 </div>
               )}
             </div>
-
-            {/* Browse sectors */}
             <button
               onClick={() => setShowSectors(s => !s)}
-              className="mt-2 text-xs transition-colors"
-              style={{ color: showSectors ? Y : W30 }}
+              className="px-3 py-2 rounded-lg border text-xs transition-colors active:opacity-70 shrink-0"
+              style={{ borderColor: showSectors ? Y : BORDER, color: showSectors ? Y : W50 }}
+            >Sectors</button>
+            <button
+              onClick={runSearch}
+              disabled={loading || !hasBrandSelected}
+              className="px-5 py-2 rounded-lg text-sm font-bold transition-all disabled:opacity-40 active:scale-95 shrink-0"
+              style={{ background: Y, color: BG }}
             >
-              {showSectors ? '▲ Hide' : '▼ Browse'} by sector
+              {loading ? '...' : 'Find'}
             </button>
-
-            {showSectors && (
-              <div className="flex flex-wrap gap-2 mt-3">
-                {TOP_SECTORS.map(sector => (
-                  <button
-                    key={sector}
-                    onClick={() => { setBrandQuery(sector); setBrandInput(sector); setShowSectors(false) }}
-                    className="px-3 py-2.5 rounded-full text-xs border transition-colors hover:border-white/30"
-                    style={{
-                      background: brandQuery === sector ? `${Y}22` : 'transparent',
-                      borderColor: brandQuery === sector ? Y : BORDER,
-                      color: brandQuery === sector ? Y : W50,
-                    }}
-                  >
-                    {sector}
-                  </button>
-                ))}
-              </div>
+            {hasFilters && (
+              <button onClick={clearAll} className="text-xs transition-colors active:opacity-70 shrink-0" style={{ color: W30 }}>
+                Clear
+              </button>
             )}
           </div>
 
-          {/* Age ranges */}
-          <div className="mb-6">
-            <label className="text-xs font-semibold uppercase tracking-wider mb-2 block" style={{ color: W50 }}>
-              Age Range <span style={{ color: W30 }}>(select all that apply)</span>
-            </label>
-            <div className="flex flex-wrap gap-2">
+          {/* Sector browser */}
+          {showSectors && (
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {TOP_SECTORS.map(sector => (
+                <button
+                  key={sector}
+                  onClick={() => { setBrandQuery(sector); setBrandInput(sector); setShowSectors(false); runSearch() }}
+                  className="px-2.5 py-1 rounded-full text-xs border transition-colors hover:border-white/30 active:opacity-70"
+                  style={{
+                    background: brandQuery === sector ? `${Y}22` : 'transparent',
+                    borderColor: brandQuery === sector ? Y : BORDER,
+                    color: brandQuery === sector ? Y : W50,
+                  }}
+                >{sector}</button>
+              ))}
+            </div>
+          )}
+
+          {/* Row 2: Age + Gender inline */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-xs font-semibold uppercase tracking-wider shrink-0" style={{ color: W50 }}>Age</span>
+            <div className="flex gap-1.5">
               {AGE_RANGES.map(age => (
                 <button
                   key={age}
                   onClick={() => toggleAge(age)}
-                  className="px-4 py-2.5 rounded-lg text-sm font-medium border transition-colors"
+                  className="px-2.5 py-1 rounded-md text-xs font-medium border transition-colors active:opacity-70"
                   style={{
                     background: selectedAges.includes(age) ? `${Y}22` : 'transparent',
                     borderColor: selectedAges.includes(age) ? Y : BORDER,
                     color: selectedAges.includes(age) ? Y : W50,
                   }}
-                >
-                  {age}
-                </button>
+                >{age}</button>
               ))}
             </div>
-          </div>
 
-          {/* Gender */}
-          <div className="mb-6">
-            <label className="text-xs font-semibold uppercase tracking-wider mb-2 block" style={{ color: W50 }}>
-              Gender
-            </label>
-            <div className="flex gap-2">
+            <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
+
+            <span className="text-xs font-semibold uppercase tracking-wider shrink-0" style={{ color: W50 }}>Gender</span>
+            <div className="flex gap-1.5">
               {(['any', 'female', 'male'] as const).map(g => (
                 <button
                   key={g}
                   onClick={() => setGender(g)}
-                  className="px-4 py-2 rounded-lg text-sm font-medium border transition-colors capitalize"
+                  className="px-2.5 py-1 rounded-md text-xs font-medium border transition-colors active:opacity-70"
                   style={{
                     background: gender === g ? `${Y}22` : 'transparent',
                     borderColor: gender === g ? Y : BORDER,
                     color: gender === g ? Y : W50,
                   }}
-                >
-                  {g === 'any' ? 'Any' : g === 'female' ? 'Female' : 'Male'}
-                </button>
+                >{g === 'any' ? 'Any' : g === 'female' ? 'F' : 'M'}</button>
               ))}
             </div>
-          </div>
 
-          {/* Threshold — only show if age or gender is selected */}
-          {(selectedAges.length > 0 || gender !== 'any') && (
-            <div className="mb-6">
-              <label className="text-xs font-semibold uppercase tracking-wider mb-2 block" style={{ color: W50 }}>
-                Minimum Audience Match — <span style={{ color: Y }}>{threshold}%</span>
-              </label>
-              <input
-                type="range"
-                min="5"
-                max="60"
-                step="5"
-                value={threshold}
-                onChange={e => setThreshold(parseInt(e.target.value))}
-                className="w-full"
-                style={{ accentColor: Y }}
-              />
-              <div className="flex justify-between text-xs mt-1" style={{ color: W30 }}>
-                <span>5%</span>
-                <span>30%</span>
-                <span>60%</span>
-              </div>
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={runSearch}
-              disabled={loading || !hasFilters}
-              className="px-6 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-40"
-              style={{ background: Y, color: BG }}
-            >
-              {loading ? 'Searching…' : 'Find Artists'}
-            </button>
-            {hasFilters && (
-              <button onClick={clearAll} className="text-sm transition-colors" style={{ color: W30 }}>
-                Clear all
-              </button>
-            )}
-            {hasSearched && !loading && (
-              <span className="text-sm ml-auto" style={{ color: W50 }}>
-                {results.length} artists match
-              </span>
+            {/* Threshold slider — inline, only when demo filters active */}
+            {(selectedAges.length > 0 || gender !== 'any') && (
+              <>
+                <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
+                <span className="text-xs font-semibold uppercase tracking-wider shrink-0" style={{ color: W50 }}>
+                  Min <span style={{ color: Y }}>{threshold}%</span>
+                </span>
+                <input
+                  type="range" min="5" max="60" step="5"
+                  value={threshold}
+                  onChange={e => { setThreshold(parseInt(e.target.value)); }}
+                  className="w-32"
+                  style={{ accentColor: Y }}
+                />
+              </>
             )}
           </div>
         </div>
 
-        {/* Results */}
+        {/* Loading */}
         {loading && (
           <div className="flex items-center justify-center py-16">
             <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: Y, borderTopColor: 'transparent' }} />
           </div>
         )}
 
-        {!loading && hasSearched && results.length === 0 && (
+        {/* Empty state — no search yet */}
+        {!hasSearched && !loading && (
           <div className="text-center py-16" style={{ color: W30 }}>
-            <div className="text-4xl mb-3 opacity-30">🔍</div>
-            <div className="text-sm">No artists match this brief. Try lowering the threshold or broadening the age range.</div>
+            <div className="text-4xl mb-3 opacity-20">🎯</div>
+            <div className="text-sm mb-1" style={{ color: W50 }}>Set your filters and hit Find Artists</div>
+            <div className="text-xs">Use brand, demographic filters, or both</div>
           </div>
         )}
 
+        {/* Empty state — no results */}
+        {!loading && hasSearched && results.length === 0 && (
+          <div className="text-center py-16" style={{ color: W30 }}>
+            <div className="text-4xl mb-3 opacity-30">🔍</div>
+            <div className="text-sm">No artists match. Try lowering the threshold or broadening the age range.</div>
+          </div>
+        )}
+
+        {/* Results */}
         {!loading && results.length > 0 && (
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-xs uppercase tracking-wider" style={{ color: W30 }}>
-                Ranked by match score
+            {/* Results header */}
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+              <div className="text-sm font-semibold" style={{ color: W50 }}>
+                {filteredResults.length} ARTIST{filteredResults.length !== 1 ? 'S' : ''}
               </div>
+
+              {/* Career stage filter chips */}
+              <div className="flex items-center gap-2 overflow-x-auto">
+                {careerStages.map(stage => (
+                  <button
+                    key={stage}
+                    onClick={() => setCareerFilter(stage)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap active:opacity-70"
+                    style={{
+                      background: careerFilter === stage ? `${Y}22` : 'transparent',
+                      borderColor: careerFilter === stage ? Y : BORDER,
+                      color: careerFilter === stage ? Y : W50,
+                    }}
+                  >{stage}</button>
+                ))}
+              </div>
+
+              {/* Legend */}
               <div className="flex items-center gap-4 text-xs" style={{ color: W30 }}>
                 {(selectedAges.length > 0 || gender !== 'any') && (
-                  <span style={{ color: GREEN }}>● Demographic match %</span>
+                  <span style={{ color: '#9c9b99' }}>● Demo match</span>
                 )}
-                {brandQuery && <span style={{ color: Y }}>● Brand affinity</span>}
-                <span style={{ color: Y }}>Score</span>
+                {brandQuery && <span style={{ color: '#9c9b99' }}>● Brand affinity</span>}
               </div>
             </div>
-            <div className="flex flex-col gap-2">
-              {results.map(artist => (
-                <ResultCard
+
+            {/* Card grid — matches Pipeline/Radar */}
+            <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
+              {filteredResults.map(artist => (
+                <MatchArtistCard
                   key={artist.chartmetric_id}
                   artist={artist}
                   query={{ brand: brandQuery, gender, ages: selectedAges }}
@@ -443,15 +528,6 @@ export default function BrandSearchPage() {
             </div>
           </div>
         )}
-
-        {!hasSearched && (
-          <div className="text-center py-16" style={{ color: W30 }}>
-            <div className="text-4xl mb-3 opacity-20">🎯</div>
-            <div className="text-sm mb-1" style={{ color: W50 }}>Set your brief above and hit Find Artists</div>
-            <div className="text-xs">Use brand, demographic filters, or both</div>
-          </div>
-        )}
-
       </div>
     </div>
   )
