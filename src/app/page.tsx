@@ -99,7 +99,7 @@ function ArtistCard({ artist, href }: { artist: Artist; href: string }) {
           <div className="absolute rounded-full" style={{ top: '10px', left: '8px', width: '7px', height: '7px', backgroundColor: getMomentumColor(artist.cm_score) }} />
         </div>
 
-        <div style={{ padding: '10px 12px 12px', minHeight: '102px' }}>
+        <div style={{ padding: '10px 12px 12px', minHeight: '105px' }}>
           <div className="truncate" style={{ fontSize: '13px', fontWeight: 600, color: '#f5f4f2', marginBottom: '4px' }}>
             {artist.name}
           </div>
