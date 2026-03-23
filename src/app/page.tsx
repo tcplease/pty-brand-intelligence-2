@@ -303,11 +303,11 @@ export default function RosterPage() {
         {/* Mobile nav */}
         <div className="flex md:hidden items-center justify-between w-full">
           <div className="flex items-center gap-2">
-            <img src="/pty-logo.svg" alt="P&TY" className="h-6 w-auto" />
+            <img src="/pty-logo.svg" alt="P&TY" className="h-9 w-auto shrink-0" />
             <div className="h-4 w-px" style={{ backgroundColor: BORDER }} />
-            <a href="/" className="text-sm font-medium" style={{ color: Y }}>Pipeline</a>
-            <a href="/discovery" className="text-sm" style={{ color: W50 }}>Radar</a>
-            <a href="/brand-search" className="text-sm" style={{ color: W50 }}>Match</a>
+            <a href="/" className="text-sm font-medium py-3 px-2" style={{ color: Y }}>Pipeline</a>
+            <a href="/discovery" className="text-sm py-3 px-2" style={{ color: W50 }}>Radar</a>
+            <a href="/brand-search" className="text-sm py-3 px-2" style={{ color: W50 }}>Match</a>
           </div>
           <div className="flex items-center">
             {/* Search icon */}
