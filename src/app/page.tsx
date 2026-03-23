@@ -82,7 +82,7 @@ function ArtistCard({ artist, href }: { artist: Artist; href: string }) {
   return (
     <a href={href} className="block h-full" style={{ color: '#f5f4f2', opacity: artist.is_dimmed ? 0.4 : 1 }}>
       <div className="flex flex-col h-full" style={{ backgroundColor: SURFACE, borderRadius: '8px', overflow: 'hidden', border: `1px solid ${BORDER}` }}>
-        <div className="relative" style={{ height: '160px', backgroundColor: '#2a2a2a' }}>
+        <div className="relative aspect-[4/3] md:aspect-auto md:h-[160px]" style={{ backgroundColor: '#2a2a2a' }}>
           {artist.image_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={artist.image_url} alt={artist.name} className="w-full h-full object-cover" />
