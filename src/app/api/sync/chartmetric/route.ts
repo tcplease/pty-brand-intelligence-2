@@ -52,15 +52,19 @@ async function getSpotifyArtistId(cmId: number, token: string): Promise<string |
   }
 }
 
-// ── Career stage ──────────────────────────────────────
-async function getCareerStage(cmId: number, token: string) {
+// ── Career stage + score ─────────────────────────────
+async function getCareerData(cmId: number, token: string): Promise<{ stage: string | null; score: number | null }> {
   const res = await fetch(
     `https://api.chartmetric.com/api/artist/${cmId}/career?limit=1`,
     { headers: { Authorization: `Bearer ${token}` } }
   )
-  if (!res.ok) return null
+  if (!res.ok) return { stage: null, score: null }
   const data = await res.json()
-  return data?.obj?.[0]?.stage || null
+  const entry = data?.obj?.[0]
+  return {
+    stage: entry?.stage || null,
+    score: entry?.score != null ? parseFloat(entry.score) : null,
+  }
 }
 
 // ── Social stats ──────────────────────────────────────
@@ -169,9 +173,9 @@ export async function POST(request: Request) {
       const cmId = artist.chartmetric_id
       try {
         // Fetch all data in parallel where possible
-        const [meta, careerStage, socialStats, audience, spotifyId] = await Promise.all([
+        const [meta, careerData, socialStats, audience, spotifyId] = await Promise.all([
           getArtistMeta(cmId, token),
-          getCareerStage(cmId, token),
+          getCareerData(cmId, token),
           getSocialStats(cmId, token),
           getInstagramAudience(cmId, token),
           getSpotifyArtistId(cmId, token),
@@ -183,10 +187,10 @@ export async function POST(request: Request) {
           name: meta?.name || artist.name,
           image_url: meta?.image_url,
           primary_genre: meta?.primary_genre,
-          cm_score: meta?.cm_score,
+          cm_score: careerData.score ?? meta?.cm_score,
           general_manager: meta?.general_manager,
           spotify_artist_id: spotifyId,
-          career_stage: careerStage,
+          career_stage: careerData.stage,
           ...socialStats,
           cm_last_refreshed_at: new Date().toISOString(),
           is_active: true,
