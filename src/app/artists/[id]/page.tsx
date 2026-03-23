@@ -3,6 +3,50 @@
 import { useEffect, useState, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 
+// ── Animation hooks ──────────────────────────────────
+function useAnimateOnMount(duration = 600, delay = 0): number {
+  const [progress, setProgress] = useState(0)
+  useEffect(() => {
+    let start: number | null = null
+    let raf: number
+    const timeout = setTimeout(() => {
+      const step = (ts: number) => {
+        if (!start) start = ts
+        const elapsed = ts - start
+        const p = Math.min(elapsed / duration, 1)
+        // ease-out: 1 - (1 - p)^3
+        setProgress(1 - Math.pow(1 - p, 3))
+        if (p < 1) raf = requestAnimationFrame(step)
+      }
+      raf = requestAnimationFrame(step)
+    }, delay)
+    return () => { clearTimeout(timeout); cancelAnimationFrame(raf) }
+  }, [duration, delay])
+  return progress
+}
+
+function useCountUp(target: number, duration = 600, delay = 0): number {
+  const [value, setValue] = useState(0)
+  useEffect(() => {
+    if (target === 0) return
+    let start: number | null = null
+    let raf: number
+    const timeout = setTimeout(() => {
+      const step = (ts: number) => {
+        if (!start) start = ts
+        const elapsed = ts - start
+        const p = Math.min(elapsed / duration, 1)
+        const eased = 1 - Math.pow(1 - p, 3)
+        setValue(Math.round(eased * target))
+        if (p < 1) raf = requestAnimationFrame(step)
+      }
+      raf = requestAnimationFrame(step)
+    }, delay)
+    return () => { clearTimeout(timeout); cancelAnimationFrame(raf) }
+  }, [target, duration, delay])
+  return value
+}
+
 // ── Brand colors ──────────────────────────────────────
 const Y = '#F9D40A'
 const BG = '#0f0f0f'
@@ -157,15 +201,17 @@ function formatDateFull(d: string): string {
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-// ── Donut chart (SVG) ─────────────────────────────────
+// ── Donut chart (SVG) — animated ─────────────────────
 function DonutChart({ male, female }: { male: number; female: number }) {
+  const progress = useAnimateOnMount(600)
+  const maleCount = useCountUp(Math.round(male), 600)
   const r = 36
   const cx = 50
   const cy = 50
   const circumference = 2 * Math.PI * r
-  const maleDash = (male / 100) * circumference
-  const femaleDash = (female / 100) * circumference
-  const gap = 2
+  const maleDash = (male / 100) * circumference * progress
+  const femaleDash = (female / 100) * circumference * progress
+  const gap = progress > 0.05 ? 2 : 0
 
   return (
     <svg viewBox="0 0 100 100" className="w-36 h-36">
@@ -182,9 +228,28 @@ function DonutChart({ male, female }: { male: number; female: number }) {
         style={{ transform: 'rotate(-90deg)', transformOrigin: '50px 50px' }}
       />
       {/* Center label */}
-      <text x="50" y="46" textAnchor="middle" fill="white" fontSize="11" fontWeight="700">{Math.round(male)}%</text>
+      <text x="50" y="46" textAnchor="middle" fill="white" fontSize="11" fontWeight="700">{maleCount}%</text>
       <text x="50" y="58" textAnchor="middle" fill={W30} fontSize="7">MALE</text>
     </svg>
+  )
+}
+
+// ── Animated butterfly row ────────────────────────────
+function ButterflyRow({ label, total, maleW, femaleW, delay }: {
+  label: string; total: number; maleW: number; femaleW: number; delay: number
+}) {
+  const progress = useAnimateOnMount(600, delay)
+  return (
+    <div className="flex items-center gap-1 mb-1.5">
+      <div className="flex-1 flex justify-end">
+        <div className="h-4 rounded-l" style={{ width: `${maleW * progress}%`, minWidth: total > 0 && progress > 0 ? 3 : 0, background: BLUE }} />
+      </div>
+      <div className="text-xs w-10 text-center shrink-0" style={{ color: W50 }}>{label}</div>
+      <div className="flex-1">
+        <div className="h-4 rounded-r" style={{ width: `${femaleW * progress}%`, minWidth: total > 0 && progress > 0 ? 3 : 0, background: PINK }} />
+      </div>
+      <div className="text-xs w-7 text-right font-mono shrink-0" style={{ color: W30 }}>{formatPct(total)}</div>
+    </div>
   )
 }
 
@@ -223,31 +288,52 @@ function ButterflyChart({ artist }: { artist: ArtistDetail }) {
       </div>
       <div className="text-xs uppercase tracking-wider mb-3" style={{ color: W30 }}>Age Breakdown</div>
 
-      {/* Butterfly bars */}
-      {ageRows.map(row => {
+      {/* Butterfly bars — animated */}
+      {ageRows.map((row, i) => {
         const pct = (row.total / maxVal) * 100
         const maleW = pct * (malePct / 100)
         const femaleW = pct * (femalePct / 100)
         return (
-          <div key={row.label} className="flex items-center gap-1 mb-1.5">
-            <div className="flex-1 flex justify-end">
-              <div className="h-4 rounded-l" style={{ width: `${maleW}%`, minWidth: row.total > 0 ? 3 : 0, background: BLUE }} />
-            </div>
-            <div className="text-xs w-10 text-center shrink-0" style={{ color: W50 }}>{row.label}</div>
-            <div className="flex-1">
-              <div className="h-4 rounded-r" style={{ width: `${femaleW}%`, minWidth: row.total > 0 ? 3 : 0, background: PINK }} />
-            </div>
-            <div className="text-xs w-7 text-right font-mono shrink-0" style={{ color: W30 }}>{formatPct(row.total)}</div>
-          </div>
+          <ButterflyRow key={row.label} label={row.label} total={row.total}
+            maleW={maleW} femaleW={femaleW} delay={i * 80} />
         )
       })}
     </div>
   )
 }
 
-// ── Affinity table ────────────────────────────────────
+// ── Animated score counter ────────────────────────────
+function AnimatedScore({ score }: { score: number | null }) {
+  const target = score != null ? Math.round(Number(score)) : 0
+  const animated = useCountUp(target, 600)
+  return (
+    <div>
+      <div className="text-2xl font-bold font-mono leading-none" style={{ color: Y }}>
+        {score != null ? animated : '—'}
+      </div>
+      <div className="text-xs tracking-wider mt-0.5" style={{ color: W30 }}>CM SCORE</div>
+    </div>
+  )
+}
+
+// ── Animated social stat ─────────────────────────────
+function AnimatedStat({ label, value, delay }: { label: string; value: number | null; delay: number }) {
+  const raw = value != null ? Number(value) : 0
+  const animated = useCountUp(raw, 600, delay)
+  return (
+    <div>
+      <div className="font-bold text-lg leading-none text-white">
+        {value != null ? formatNum(animated) : '—'}
+      </div>
+      <div className="text-xs tracking-wider" style={{ color: W30 }}>{label}</div>
+    </div>
+  )
+}
+
+// ── Affinity table — animated bars ────────────────────
 function AffinityTable({ items, labelKey, valueKey }: { items: any[]; labelKey: string; valueKey: string }) {
   const max = items.length > 0 ? Math.max(...items.map(i => i[valueKey])) : 1
+  const progress = useAnimateOnMount(600, 100)
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
@@ -269,7 +355,7 @@ function AffinityTable({ items, labelKey, valueKey }: { items: any[]; labelKey: 
               <td className="py-2.5 text-sm pr-4" style={{ color: W80 }}>{item[labelKey]}</td>
               <td className="py-2.5 hidden sm:table-cell" style={{ width: '120px' }}>
                 <div className="h-1 rounded overflow-hidden" style={{ background: BORDER }}>
-                  <div className="h-full rounded" style={{ width: `${barPct}%`, background: Y }} />
+                  <div className="h-full rounded" style={{ width: `${barPct * progress}%`, background: Y }} />
                 </div>
               </td>
               <td className="py-2.5 text-right text-sm font-bold font-mono" style={{ color: isHigh ? Y : W50 }}>
@@ -573,12 +659,7 @@ ${deals.length > 0 ? `Tours: ${deals.map(d => `${d.tour ?? 'Untitled'} (${d.tota
 
             {/* Score + stage */}
             <div className="flex items-center flex-wrap gap-5 mb-3">
-              <div>
-                <div className="text-2xl font-bold font-mono leading-none" style={{ color: Y }}>
-                  {artist.cm_score != null ? Math.round(artist.cm_score) : '—'}
-                </div>
-                <div className="text-xs tracking-wider mt-0.5" style={{ color: W30 }}>CM SCORE</div>
-              </div>
+              <AnimatedScore score={artist.cm_score} />
               {activeDeal?.stage && (
                 <div>
                   <div className="text-sm font-semibold" style={{ color: stageColor }}>{activeDeal.stage}</div>
@@ -587,18 +668,15 @@ ${deals.length > 0 ? `Tours: ${deals.map(d => `${d.tour ?? 'Untitled'} (${d.tota
               )}
             </div>
 
-            {/* Social stats */}
+            {/* Social stats — animated */}
             <div className="flex items-center flex-wrap gap-5 mb-4">
               {[
-                { label: 'SPOTIFY', value: formatNum(artist.spotify_followers) },
-                { label: 'INSTAGRAM', value: formatNum(artist.instagram_followers) },
-                { label: 'TIKTOK', value: formatNum(artist.tiktok_followers) },
-                { label: 'YOUTUBE', value: formatNum(artist.youtube_subscribers) },
-              ].map(s => (
-                <div key={s.label}>
-                  <div className="font-bold text-lg leading-none text-white">{s.value}</div>
-                  <div className="text-xs tracking-wider" style={{ color: W30 }}>{s.label}</div>
-                </div>
+                { label: 'SPOTIFY', raw: artist.spotify_followers },
+                { label: 'INSTAGRAM', raw: artist.instagram_followers },
+                { label: 'TIKTOK', raw: artist.tiktok_followers },
+                { label: 'YOUTUBE', raw: artist.youtube_subscribers },
+              ].map((s, i) => (
+                <AnimatedStat key={s.label} label={s.label} value={s.raw} delay={i * 100} />
               ))}
             </div>
 
