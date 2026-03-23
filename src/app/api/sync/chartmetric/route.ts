@@ -177,18 +177,24 @@ export async function POST(request: Request) {
           getSpotifyArtistId(cmId, token),
         ])
 
-        // Build the artist update
-        const artistUpdate: Record<string, any> = {
+        // Build the artist update — only include non-null values
+        // so we never overwrite existing good data with null
+        const rawUpdate: Record<string, any> = {
           name: meta?.name || artist.name,
           image_url: meta?.image_url,
           primary_genre: meta?.primary_genre,
           cm_score: meta?.cm_score,
           general_manager: meta?.general_manager,
-          spotify_artist_id: spotifyId ?? null,
+          spotify_artist_id: spotifyId,
           career_stage: careerStage,
           ...socialStats,
           cm_last_refreshed_at: new Date().toISOString(),
           is_active: true,
+        }
+        // Strip null/undefined values to avoid overwriting existing data
+        const artistUpdate: Record<string, any> = {}
+        for (const [key, val] of Object.entries(rawUpdate)) {
+          if (val !== null && val !== undefined) artistUpdate[key] = val
         }
 
         // If we got audience data, add demographics
