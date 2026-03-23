@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
-const HIDDEN_STAGES = ['Lost']
+const HIDDEN_STAGES = ['Lost', 'Tour Canceled', 'Fell Off (Not Lost)']
 const DIMMED_STAGES = ['Outbound - No Contact', 'Outbound - Automated Contact']
 
 export async function GET(request: Request) {
