@@ -426,7 +426,7 @@ export default function DiscoveryPage() {
         )}
 
         {!loading && filtered.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '4px' }}>
+          <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(200px,1fr))]" style={{ gap: '4px' }}>
             {filtered.map((artist, i) => (
               <ArtistCard
                 key={artist.chartmetric_id}

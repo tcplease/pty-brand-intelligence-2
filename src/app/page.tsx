@@ -391,7 +391,7 @@ export default function RosterPage() {
             <div className="text-sm">No artists found</div>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '4px' }}>
+          <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(200px,1fr))]" style={{ gap: '4px' }}>
             {artists.map(artist => (
               <ArtistCard key={artist.chartmetric_id} artist={artist}
                 href={`/artists/${artist.chartmetric_id}`} />

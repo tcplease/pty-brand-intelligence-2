@@ -516,7 +516,7 @@ export default function BrandSearchPage() {
             </div>
 
             {/* Card grid — matches Pipeline/Radar */}
-            <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+            <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
               {filteredResults.map(artist => (
                 <MatchArtistCard
                   key={artist.chartmetric_id}
