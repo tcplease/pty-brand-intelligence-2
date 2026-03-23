@@ -184,7 +184,7 @@ export async function POST(request: Request) {
           primary_genre: meta?.primary_genre,
           cm_score: meta?.cm_score,
           general_manager: meta?.general_manager,
-          spotify_artist_id: spotifyId ?? artist.spotify_artist_id ?? null,
+          spotify_artist_id: spotifyId ?? null,
           career_stage: careerStage,
           ...socialStats,
           cm_last_refreshed_at: new Date().toISOString(),
