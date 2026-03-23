@@ -268,14 +268,15 @@ export default function RosterPage() {
               placeholder="Search artists..."
               value={searchInput}
               onChange={e => handleSearch(e.target.value)}
-              className="px-3 py-1.5 rounded-lg border text-xs outline-none w-48"
+              className="px-3 py-1.5 rounded-lg border text-sm outline-none w-48"
+              inputMode="search" autoCorrect="off" autoCapitalize="off" spellCheck={false}
               style={{ background: '#1C1C1C', borderColor: BORDER, color: '#fff' }}
             />
           </div>
 
           {/* Desktop stage filter */}
           <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}
-            className="px-3 py-1.5 rounded-lg border text-xs outline-none"
+            className="px-3 py-1.5 rounded-lg border text-sm outline-none"
             style={{ background: '#1C1C1C', borderColor: stageFilter !== 'All Deal Stages' ? Y : BORDER, color: 'rgba(255,255,255,0.8)' }}>
             <option>All Deal Stages</option>
             {stageOptions.map(s => <option key={s} value={s}>{STAGE_SHORT_LABELS[s] ?? s}</option>)}
@@ -283,7 +284,7 @@ export default function RosterPage() {
 
           {/* Desktop genre filter */}
           <select value={genre} onChange={e => setGenre(e.target.value)}
-            className="px-3 py-1.5 rounded-lg border text-xs outline-none"
+            className="px-3 py-1.5 rounded-lg border text-sm outline-none"
             style={{ background: '#1C1C1C', borderColor: genre !== 'All Genres' ? Y : BORDER, color: 'rgba(255,255,255,0.8)' }}>
             <option>All Genres</option>
             {genres.map(g => <option key={g}>{g}</option>)}
@@ -291,7 +292,7 @@ export default function RosterPage() {
 
           {/* Desktop sort */}
           <select value={sort} onChange={e => setSort(e.target.value as any)}
-            className="px-3 py-1.5 rounded-lg border text-xs outline-none"
+            className="px-3 py-1.5 rounded-lg border text-sm outline-none"
             style={{ background: '#1C1C1C', borderColor: BORDER, color: 'rgba(255,255,255,0.8)' }}>
             <option value="score">CM Score</option>
             <option value="az">A–Z</option>
@@ -313,13 +314,13 @@ export default function RosterPage() {
             <button onClick={() => {
               setShowMobileSearch(prev => !prev)
               setTimeout(() => mobileSearchRef.current?.focus(), 100)
-            }} className="p-2" style={{ color: search ? Y : '#888' }}>
+            }} className="p-3" style={{ color: search ? Y : '#888' }}>
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </button>
             {/* Filter icon with badge */}
-            <button onClick={() => setShowFilterDrawer(true)} className="p-2 relative" style={{ color: activeFilterCount > 0 ? Y : '#888' }}>
+            <button onClick={() => setShowFilterDrawer(true)} className="p-3 relative" style={{ color: activeFilterCount > 0 ? Y : '#888' }}>
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18M7 12h10M11 20h2" />
               </svg>
@@ -342,8 +343,9 @@ export default function RosterPage() {
             placeholder="Search artists..."
             value={searchInput}
             onChange={e => handleSearch(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+            className="w-full px-3 py-2 rounded-lg border text-base outline-none"
             style={{ background: '#1C1C1C', borderColor: BORDER, color: '#fff' }}
+            inputMode="search" autoCorrect="off" autoCapitalize="off" spellCheck={false}
           />
         </div>
       )}
@@ -354,14 +356,14 @@ export default function RosterPage() {
           style={{ borderColor: BORDER }}>
           {stageFilter !== 'All Deal Stages' && (
             <button onClick={() => setStageFilter('All Deal Stages')}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold"
+              className="flex items-center gap-1 px-3 py-2 rounded-full text-xs font-bold"
               style={{ backgroundColor: Y, color: '#0a0a0a' }}>
               {STAGE_SHORT_LABELS[stageFilter] ?? stageFilter} <span className="opacity-60">✕</span>
             </button>
           )}
           {genre !== 'All Genres' && (
             <button onClick={() => setGenre('All Genres')}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border"
+              className="flex items-center gap-1 px-3 py-2 rounded-full text-xs font-bold border"
               style={{ borderColor: Y, color: Y }}>
               {genre} <span className="opacity-60">✕</span>
             </button>

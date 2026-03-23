@@ -216,7 +216,7 @@ function ArtistCard({
               onMouseLeave={() => setShowTooltip(false)}
               onClick={(e) => e.stopPropagation()}
               className="w-full"
-              style={{ fontSize: '11px', fontWeight: 600, padding: '5px 0', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', color: W30, border: 'none', cursor: 'not-allowed' }}
+              style={{ fontSize: '11px', fontWeight: 600, padding: '8px 0', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', color: W30, border: 'none', cursor: 'not-allowed' }}
             >
               Add to Monday
             </button>
@@ -235,7 +235,7 @@ function ArtistCard({
             }}
             disabled={dismissing}
             className="transition-colors hover:bg-white/5"
-            style={{ fontSize: '11px', fontWeight: 500, padding: '5px 10px', borderRadius: '6px', color: W30, background: 'transparent', border: 'none' }}
+            style={{ fontSize: '11px', fontWeight: 500, padding: '8px 12px', borderRadius: '6px', color: W30, background: 'transparent', border: 'none' }}
           >
             {dismissing ? '…' : 'Not Now'}
           </button>
@@ -339,11 +339,11 @@ export default function DiscoveryPage() {
         </div>
 
         {/* Controls */}
-        <div className="flex flex-wrap items-center gap-2.5 mb-5 px-2 md:px-0">
+        <div className="flex items-center gap-2.5 mb-5 px-2 md:px-0 overflow-x-auto md:flex-wrap scrollbar-hide">
           <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: BORDER }}>
             {(['week', 'month', 'all'] as const).map(p => (
               <button key={p} onClick={() => setPeriod(p)}
-                className="px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors"
+                className="px-3.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-colors"
                 style={{
                   background: period === p ? Y : 'transparent',
                   color: period === p ? BG : W30,
@@ -358,19 +358,20 @@ export default function DiscoveryPage() {
             placeholder="Search artists..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="px-3 py-1.5 rounded-lg border text-xs outline-none min-w-[180px]"
+            className="px-3 py-1.5 rounded-lg border text-sm outline-none min-w-[180px]"
             style={{ background: SURFACE2, borderColor: BORDER, color: '#fff' }}
+            inputMode="search" autoCorrect="off" autoCapitalize="off" spellCheck={false}
           />
 
           <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}
-            className="px-3 py-1.5 rounded-lg border text-xs outline-none"
+            className="px-3 py-1.5 rounded-lg border text-sm outline-none"
             style={{ background: SURFACE2, borderColor: BORDER, color: W80 }}>
             <option value="">All Career Stages</option>
             {stages.map(s => <option key={s} value={s!}>{s}</option>)}
           </select>
 
           <select value={minFestivals} onChange={e => setMinFestivals(parseInt(e.target.value))}
-            className="px-3 py-1.5 rounded-lg border text-xs outline-none"
+            className="px-3 py-1.5 rounded-lg border text-sm outline-none"
             style={{ background: SURFACE2, borderColor: BORDER, color: W80 }}>
             <option value="0">Any Festival Count</option>
             <option value="2">2+ Festivals</option>
@@ -379,7 +380,7 @@ export default function DiscoveryPage() {
           </select>
 
           <select value={sortBy} onChange={e => setSortBy(e.target.value as any)}
-            className="px-3 py-1.5 rounded-lg border text-xs outline-none"
+            className="px-3 py-1.5 rounded-lg border text-sm outline-none"
             style={{ background: SURFACE2, borderColor: BORDER, color: W80 }}>
             <option value="festivals">Sort: Festival Count</option>
             <option value="score">Sort: CM Score</option>

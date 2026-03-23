@@ -250,7 +250,8 @@ export default function BrandSearchPage() {
                 onFocus={() => brandSuggestions.length > 0 && setShowSuggestions(true)}
                 onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                 placeholder="Search for Nike, Adidas, fitness brands..."
-                className="w-full px-4 py-3 rounded-xl border text-sm outline-none transition-colors"
+                className="w-full px-4 py-3 rounded-xl border text-base outline-none transition-colors"
+                inputMode="search" autoCorrect="off" autoCapitalize="off" spellCheck={false}
                 style={{
                   background: SURFACE2,
                   borderColor: brandQuery ? Y : BORDER,
@@ -295,7 +296,7 @@ export default function BrandSearchPage() {
                   <button
                     key={sector}
                     onClick={() => { setBrandQuery(sector); setBrandInput(sector); setShowSectors(false) }}
-                    className="px-3 py-1.5 rounded-full text-xs border transition-colors hover:border-white/30"
+                    className="px-3 py-2.5 rounded-full text-xs border transition-colors hover:border-white/30"
                     style={{
                       background: brandQuery === sector ? `${Y}22` : 'transparent',
                       borderColor: brandQuery === sector ? Y : BORDER,
@@ -319,7 +320,7 @@ export default function BrandSearchPage() {
                 <button
                   key={age}
                   onClick={() => toggleAge(age)}
-                  className="px-4 py-2 rounded-lg text-sm font-medium border transition-colors"
+                  className="px-4 py-2.5 rounded-lg text-sm font-medium border transition-colors"
                   style={{
                     background: selectedAges.includes(age) ? `${Y}22` : 'transparent',
                     borderColor: selectedAges.includes(age) ? Y : BORDER,

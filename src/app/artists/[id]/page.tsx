@@ -287,8 +287,8 @@ function AffinityTable({ items, labelKey, valueKey }: { items: any[]; labelKey: 
 function ContactRow({ icon, text, onCopy, href }: { icon: string; text: string; onCopy?: () => void; href?: string }) {
   const [copied, setCopied] = useState(false)
   return (
-    <div className="flex items-center gap-2 py-1.5 border-t" style={{ borderColor: BORDER }}>
-      <div className="w-7 h-7 rounded-md flex items-center justify-center text-xs shrink-0" style={{ background: BORDER }}>{icon}</div>
+    <div className="flex items-center gap-2 py-2.5 border-t" style={{ borderColor: BORDER }}>
+      <div className="w-8 h-8 rounded-md flex items-center justify-center text-xs shrink-0" style={{ background: BORDER }}>{icon}</div>
       {href ? (
         <a href={href} target="_blank" rel="noopener noreferrer" className="flex-1 text-sm truncate hover:underline" style={{ color: W80 }}>{text}</a>
       ) : (
@@ -296,7 +296,7 @@ function ContactRow({ icon, text, onCopy, href }: { icon: string; text: string; 
       )}
       {onCopy && (
         <button onClick={() => { onCopy(); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
-          className="w-7 h-7 rounded-md border flex items-center justify-center text-xs shrink-0 transition-colors"
+          className="w-9 h-9 rounded-md border flex items-center justify-center text-xs shrink-0 transition-colors"
           style={{ background: copied ? `${Y}22` : 'transparent', borderColor: copied ? Y : BORDER, color: copied ? Y : W30 }}>
           {copied ? '✓' : '⎘'}
         </button>
@@ -804,8 +804,9 @@ ${deals.length > 0 ? `Tours: ${deals.map(d => `${d.tour ?? 'Untitled'} (${d.tota
                 onChange={e => setPitchInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleGeneratePitch()}
                 placeholder={`Build a VIP pitch for ${artist.name} targeting millennials...`}
-                className="flex-1 px-4 py-3 rounded-xl border text-sm outline-none"
+                className="flex-1 px-4 py-3 rounded-xl border text-base outline-none"
                 style={{ background: SURFACE2, borderColor: BORDER, color: '#fff' }}
+                autoCorrect="off" autoCapitalize="off" spellCheck={false}
               />
               <button onClick={handleGeneratePitch} disabled={pitchLoading || !pitchInput.trim()}
                 className="px-5 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50"

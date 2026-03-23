@@ -99,6 +99,23 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
+/* Mobile touch feedback */
+@media (hover: none) {
+  button:active,
+  a:active,
+  [role="button"]:active {
+    opacity: 0.7;
+    transition: opacity 0.05s ease-out;
+  }
+}
+
+/* Prevent iOS zoom on input focus */
+@supports (-webkit-touch-callout: none) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
 /* Selection color */
 ::selection {
   background: #F9D40A;
