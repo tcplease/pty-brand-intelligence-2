@@ -75,13 +75,22 @@ export async function GET(request: Request) {
       ? artists
       : artists.filter(a => new Date(a.created_at) >= cutoff)
 
-    // Enrich and sort
-    const enriched = filtered.map(a => ({
-      ...a,
-      festivals: festivalsByArtist[a.chartmetric_id] || [],
-      festival_count: (festivalsByArtist[a.chartmetric_id] || []).length,
-      activity: (activityByArtist[a.chartmetric_id] || []).slice(0, 5),
-    }))
+    // Enrich with festivals, activity, and presave signals
+    const enriched = filtered.map(a => {
+      const activity = activityByArtist[a.chartmetric_id] || []
+      const presaves = activity.filter((e: any) => e.event_type === 'album_presave')
+      return {
+        ...a,
+        festivals: festivalsByArtist[a.chartmetric_id] || [],
+        festival_count: (festivalsByArtist[a.chartmetric_id] || []).length,
+        activity: activity.slice(0, 5),
+        presaves,
+        presave_count: presaves.length,
+        signal_type: presaves.length > 0 && (festivalsByArtist[a.chartmetric_id] || []).length > 0
+          ? 'both'
+          : presaves.length > 0 ? 'presave' : 'festival',
+      }
+    })
 
     enriched.sort((a, b) => {
       if (b.festival_count !== a.festival_count) return b.festival_count - a.festival_count

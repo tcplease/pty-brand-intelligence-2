@@ -25,12 +25,16 @@ async function getArtistMeta(cmId: number, token: string) {
   const obj = data?.obj
   if (!obj) return null
 
+  const spotifyIds = obj.spotify_artist_ids || []
+  const spotifyArtistId = spotifyIds.length > 0 ? String(spotifyIds[0]) : null
+
   return {
     name: obj.name || null,
     image_url: obj.image_url || null,
     primary_genre: obj.genres?.primary?.name || null,
     cm_score: obj.cm_score || null,
     general_manager: obj.general_manager || null,
+    spotify_artist_id: spotifyArtistId,
   }
 }
 
@@ -165,6 +169,7 @@ export async function POST(request: Request) {
           primary_genre: meta?.primary_genre,
           cm_score: meta?.cm_score,
           general_manager: meta?.general_manager,
+          spotify_artist_id: meta?.spotify_artist_id ?? null,
           career_stage: careerStage,
           ...socialStats,
           cm_last_refreshed_at: new Date().toISOString(),

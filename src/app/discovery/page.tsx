@@ -32,6 +32,12 @@ interface Festival {
   festival_location: string | null
 }
 
+interface PresaveEntry {
+  event_title: string
+  event_date: string | null
+  event_detail: Record<string, unknown> | null
+}
+
 interface DiscoveryArtist {
   chartmetric_id: number
   name: string
@@ -45,6 +51,9 @@ interface DiscoveryArtist {
   created_at: string
   festivals: Festival[]
   festival_count: number
+  presaves?: PresaveEntry[]
+  presave_count?: number
+  signal_type?: 'festival' | 'presave' | 'both'
 }
 
 // ── Helpers ───────────────────────────────────────────
@@ -175,7 +184,7 @@ function ArtistCard({
             </div>
           )}
         </div>
-        {/* Festival count — links to activity */}
+        {/* Signal badges — festivals + pre-saves */}
         {artist.festival_count > 0 && (
           <div
             onClick={(e) => { e.stopPropagation(); onActivity(artist.chartmetric_id) }}
@@ -183,6 +192,18 @@ function ArtistCard({
             style={{ color: Y }}
           >
             🎪 {artist.festival_count} festival{artist.festival_count !== 1 ? 's' : ''}
+          </div>
+        )}
+        {artist.presaves && artist.presaves.length > 0 && (
+          <div
+            onClick={(e) => { e.stopPropagation(); onActivity(artist.chartmetric_id) }}
+            className="text-xs font-medium mb-1 cursor-pointer hover:underline"
+            style={{ color: BLUE }}
+          >
+            💿 {artist.presaves[0].event_title.replace(/^(Upcoming|New Release): /, '')}
+            {artist.presaves[0].event_date && (
+              <span style={{ color: W30 }}> — {new Date(artist.presaves[0].event_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+            )}
           </div>
         )}
         <div style={{ marginBottom: '4px' }}>
