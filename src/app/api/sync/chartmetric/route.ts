@@ -25,16 +25,30 @@ async function getArtistMeta(cmId: number, token: string) {
   const obj = data?.obj
   if (!obj) return null
 
-  const spotifyIds = obj.spotify_artist_ids || []
-  const spotifyArtistId = spotifyIds.length > 0 ? String(spotifyIds[0]) : null
-
   return {
     name: obj.name || null,
     image_url: obj.image_url || null,
     primary_genre: obj.genres?.primary?.name || null,
     cm_score: obj.cm_score || null,
     general_manager: obj.general_manager || null,
-    spotify_artist_id: spotifyArtistId,
+  }
+}
+
+// ── Spotify artist ID (from /urls endpoint) ──────────
+async function getSpotifyArtistId(cmId: number, token: string): Promise<string | null> {
+  try {
+    const res = await fetch(`https://api.chartmetric.com/api/artist/${cmId}/urls`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    const spotifyEntry = (data.obj || []).find((u: any) => u.domain === 'spotify')
+    if (!spotifyEntry?.url?.[0]) return null
+    // Parse ID from URL: https://open.spotify.com/artist/XXXXX
+    const match = spotifyEntry.url[0].match(/\/artist\/([a-zA-Z0-9]+)/)
+    return match ? match[1] : null
+  } catch {
+    return null
   }
 }
 
@@ -155,11 +169,12 @@ export async function POST(request: Request) {
       const cmId = artist.chartmetric_id
       try {
         // Fetch all data in parallel where possible
-        const [meta, careerStage, socialStats, audience] = await Promise.all([
+        const [meta, careerStage, socialStats, audience, spotifyId] = await Promise.all([
           getArtistMeta(cmId, token),
           getCareerStage(cmId, token),
           getSocialStats(cmId, token),
           getInstagramAudience(cmId, token),
+          getSpotifyArtistId(cmId, token),
         ])
 
         // Build the artist update
@@ -169,7 +184,7 @@ export async function POST(request: Request) {
           primary_genre: meta?.primary_genre,
           cm_score: meta?.cm_score,
           general_manager: meta?.general_manager,
-          spotify_artist_id: meta?.spotify_artist_id ?? null,
+          spotify_artist_id: spotifyId ?? artist.spotify_artist_id ?? null,
           career_stage: careerStage,
           ...socialStats,
           cm_last_refreshed_at: new Date().toISOString(),
