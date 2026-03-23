@@ -29,8 +29,8 @@ const DATE_COLS = new Set(['mirror6', 'mirror23', 'mirror21', 'mirror20', 'mirro
 const TEXT_COLS = new Set(['text__1', 'person', 'status', 'tags6', 'priority'])
 
 // ── Helpers ───────────────────────────────────────────
-function parseColumnValue(colId: string, text: string | null, value: string | null) {
-  if (!text && !value) return null
+function parseColumnValue(colId: string, text: string | null, value: string | null, displayValue?: string | null) {
+  if (!text && !value && !displayValue) return null
 
   if (NUMBER_COLS.has(colId)) {
     const num = parseFloat(text || '')
@@ -38,14 +38,21 @@ function parseColumnValue(colId: string, text: string | null, value: string | nu
   }
 
   if (DATE_COLS.has(colId)) {
+    // Try structured value first
     if (value) {
       try {
         const parsed = JSON.parse(value)
         if (parsed.date) return parsed.date
       } catch {}
     }
+    // Try text field
     if (text && /^\d{4}-\d{2}-\d{2}/.test(text)) {
       return text.split('T')[0]
+    }
+    // Try display_value (critical for mirror columns)
+    if (displayValue) {
+      const dateMatch = displayValue.match(/(\d{4}-\d{2}-\d{2})/)
+      if (dateMatch) return dateMatch[1]
     }
     return null
   }
@@ -88,7 +95,7 @@ async function fetchAllBoardItems(boardId: string, extraFields = '') {
             id
             name
             ${extraFields}
-            column_values { id type text value }
+            column_values { id type text value ... on MirrorValue { display_value } }
           }
         }
       }
@@ -131,7 +138,7 @@ async function syncDeals() {
     for (const col of item.column_values) {
       const supaCol = COLUMN_MAP[col.id as keyof typeof COLUMN_MAP]
       if (supaCol) {
-        row[supaCol] = parseColumnValue(col.id, col.text, col.value)
+        row[supaCol] = parseColumnValue(col.id, col.text, col.value, col.display_value)
       }
     }
 

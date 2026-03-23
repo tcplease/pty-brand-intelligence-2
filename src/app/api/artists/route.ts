@@ -4,6 +4,24 @@ import { supabase } from '@/lib/supabase'
 const HIDDEN_STAGES = ['Lost', 'Tour Canceled', 'Fell Off (Not Lost)']
 const DIMMED_STAGES = ['Outbound - No Contact', 'Outbound - Automated Contact']
 
+// Higher number = better stage (used to pick the "best" deal for display)
+const STAGE_PRIORITY: Record<string, number> = {
+  'Lost': 0,
+  'Tour Canceled': 1,
+  'Fell Off (Not Lost)': 2,
+  'Outbound - No Contact': 3,
+  'Outbound - Automated Contact': 4,
+  'Prospect - Direct Sales Agent Contact': 5,
+  'Active Leads (Contact Has Responded)': 6,
+  'Proposal (financials submitted)': 7,
+  'Negotiation (Terms Being Discussed)': 8,
+  'Finalizing On-Sale (Terms Agreed)': 9,
+  'Won (Final On-Sale Planned)': 10,
+}
+function stagePriority(stage: string | null): number {
+  return stage ? (STAGE_PRIORITY[stage] ?? -1) : -1
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const search = url.searchParams.get('search') || ''
@@ -18,34 +36,48 @@ export async function GET(request: Request) {
     // Strategy: get distinct chartmetric_ids and their "best" stage per artist.
     const { data: mondayStages, error: mondayError } = await supabase
       .from('intel_monday_items')
-      .select('chartmetric_id, stage')
+      .select('chartmetric_id, stage, last_show')
       .not('chartmetric_id', 'is', null)
 
     if (mondayError) throw mondayError
 
     // Build a map: chartmetric_id → best visible stage
-    // An artist is hidden if ALL their deals are Lost
-    // An artist is dimmed if their best non-Lost deal is an Outbound stage
+    // An artist is hidden if ALL their deals are hidden/expired
+    // An artist is dimmed if their best active deal is an Outbound stage
+    // A "Won" deal with last_show in the past is treated as expired (hidden)
+    const today = new Date().toISOString().split('T')[0]
     const stageMap = new Map<number, { bestStage: string | null; allLost: boolean; isDimmed: boolean }>()
 
     for (const item of mondayStages || []) {
       const id = item.chartmetric_id as number
-      const stage = item.stage as string | null
+      let stage = item.stage as string | null
+      const lastShow = item.last_show as string | null
+
+      // A deal with last_show in the past is expired — treat as hidden
+      const isExpired = lastShow != null && lastShow < today
+      if (isExpired) {
+        stage = null // Treat as if no active stage
+      }
+
+      const isHidden = stage === null || HIDDEN_STAGES.includes(stage)
       const existing = stageMap.get(id)
 
       if (!existing) {
         stageMap.set(id, {
-          bestStage: stage,
-          allLost: stage === 'Lost' || stage === null,
-          isDimmed: DIMMED_STAGES.includes(stage || ''),
+          bestStage: isHidden ? stage : stage,
+          allLost: isHidden,
+          isDimmed: !isHidden && DIMMED_STAGES.includes(stage || ''),
         })
       } else {
-        // If this stage is not Lost, mark as not allLost
-        if (stage !== 'Lost' && stage !== null) {
+        // If this stage is not hidden, mark as not allLost
+        if (!isHidden) {
           existing.allLost = false
           // If this stage is better than outbound, mark as not dimmed
-          if (!DIMMED_STAGES.includes(stage)) {
+          if (!DIMMED_STAGES.includes(stage!)) {
             existing.isDimmed = false
+          }
+          // Always keep the highest-priority stage
+          if (stagePriority(stage) > stagePriority(existing.bestStage)) {
             existing.bestStage = stage
           }
         }

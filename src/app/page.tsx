@@ -82,7 +82,7 @@ function ArtistCard({ artist, href }: { artist: Artist; href: string }) {
   return (
     <a href={href} className="block h-full" style={{ color: '#f5f4f2', opacity: artist.is_dimmed ? 0.4 : 1 }}>
       <div className="flex flex-col h-full" style={{ backgroundColor: SURFACE, borderRadius: '8px', overflow: 'hidden', border: `1px solid ${BORDER}` }}>
-        <div className="relative" style={{ aspectRatio: '4/3', backgroundColor: '#2a2a2a' }}>
+        <div className="relative" style={{ height: '160px', backgroundColor: '#2a2a2a' }}>
           {artist.image_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={artist.image_url} alt={artist.name} className="w-full h-full object-cover" />
@@ -100,28 +100,12 @@ function ArtistCard({ artist, href }: { artist: Artist; href: string }) {
         </div>
 
         <div className="flex-1 flex flex-col" style={{ padding: '10px 12px 12px' }}>
-          <div className="truncate" style={{ fontSize: '13px', fontWeight: 600, color: '#f5f4f2', marginBottom: '4px' }}>
+          <div className="truncate" style={{ fontSize: '13px', fontWeight: 600, color: '#f5f4f2', marginBottom: '2px' }}>
             {artist.name}
           </div>
-          <div className="flex flex-col" style={{ gap: '3px', marginBottom: '6px' }}>
-            {artist.career_stage && (
-              <div>
-                <span style={{
-                  fontSize: '8px',
-                  fontWeight: 600,
-                  padding: '2px 7px',
-                  borderRadius: '4px',
-                  background: `${careerColor}15`,
-                  color: careerColor,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                }}>
-                  {artist.career_stage}
-                </span>
-              </div>
-            )}
+          <div className="flex flex-col" style={{ gap: '1px', marginBottom: '8px' }}>
             {artist.primary_genre && (
-              <div>
+              <div style={{ lineHeight: 1 }}>
                 <span style={{
                   fontSize: '8px',
                   fontWeight: 600,
@@ -131,13 +115,31 @@ function ArtistCard({ artist, href }: { artist: Artist; href: string }) {
                   color: W50,
                   textTransform: 'uppercase',
                   letterSpacing: '0.04em',
+                  display: 'inline-block',
                 }}>
                   {artist.primary_genre}
                 </span>
               </div>
             )}
+            {artist.career_stage && (
+              <div style={{ lineHeight: 1 }}>
+                <span style={{
+                  fontSize: '8px',
+                  fontWeight: 600,
+                  padding: '2px 7px',
+                  borderRadius: '4px',
+                  background: `${careerColor}15`,
+                  color: careerColor,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  display: 'inline-block',
+                }}>
+                  {artist.career_stage}
+                </span>
+              </div>
+            )}
             {stageColor && artist.deal_stage && (
-              <div>
+              <div style={{ lineHeight: 1 }}>
                 <span style={{
                   fontSize: '8px',
                   fontWeight: 600,
@@ -147,6 +149,7 @@ function ArtistCard({ artist, href }: { artist: Artist; href: string }) {
                   color: stageColor,
                   textTransform: 'uppercase',
                   letterSpacing: '0.04em',
+                  display: 'inline-block',
                 }}>
                   {STAGE_SHORT_LABELS[artist.deal_stage] ?? artist.deal_stage}
                 </span>
