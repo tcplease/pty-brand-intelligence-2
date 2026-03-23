@@ -42,41 +42,40 @@ export async function GET(request: Request) {
     if (mondayError) throw mondayError
 
     // Build a map: chartmetric_id → best visible stage
-    // An artist is hidden if ALL their deals are hidden/expired
-    // An artist is dimmed if their best active deal is an Outbound stage
-    // A "Won" deal with last_show in the past is treated as expired (hidden)
+    // Rules:
+    //   - A deal is "inactive" if it's in HIDDEN_STAGES OR expired (last_show in the past)
+    //   - An artist is HIDDEN if ALL their deals are inactive
+    //   - An artist is DIMMED if their best active deal is an Outbound stage
+    //   - The displayed stage is the highest-priority ACTIVE deal
+    //   - Deals with no last_show are treated as active
     const today = new Date().toISOString().split('T')[0]
-    const stageMap = new Map<number, { bestStage: string | null; allLost: boolean; isDimmed: boolean }>()
+    const stageMap = new Map<number, { bestStage: string | null; allInactive: boolean; isDimmed: boolean }>()
 
     for (const item of mondayStages || []) {
       const id = item.chartmetric_id as number
-      let stage = item.stage as string | null
+      const stage = item.stage as string | null
       const lastShow = item.last_show as string | null
 
-      // A deal with last_show in the past is expired — treat as hidden
+      const isHiddenStage = stage === null || HIDDEN_STAGES.includes(stage)
       const isExpired = lastShow != null && lastShow < today
-      if (isExpired) {
-        stage = null // Treat as if no active stage
-      }
+      const isInactive = isHiddenStage || isExpired
 
-      const isHidden = stage === null || HIDDEN_STAGES.includes(stage)
       const existing = stageMap.get(id)
 
       if (!existing) {
         stageMap.set(id, {
-          bestStage: isHidden ? stage : stage,
-          allLost: isHidden,
-          isDimmed: !isHidden && DIMMED_STAGES.includes(stage || ''),
+          bestStage: isInactive ? null : stage,
+          allInactive: isInactive,
+          isDimmed: !isInactive && DIMMED_STAGES.includes(stage || ''),
         })
       } else {
-        // If this stage is not hidden, mark as not allLost
-        if (!isHidden) {
-          existing.allLost = false
-          // If this stage is better than outbound, mark as not dimmed
+        if (!isInactive) {
+          // This deal is active — artist should be visible
+          existing.allInactive = false
           if (!DIMMED_STAGES.includes(stage!)) {
             existing.isDimmed = false
           }
-          // Always keep the highest-priority stage
+          // Keep the highest-priority active deal for display
           if (stagePriority(stage) > stagePriority(existing.bestStage)) {
             existing.bestStage = stage
           }
@@ -89,7 +88,7 @@ export async function GET(request: Request) {
     const dimmedIds = new Set<number>()
 
     stageMap.forEach((info, id) => {
-      if (info.allLost) hiddenIds.add(id)
+      if (info.allInactive) hiddenIds.add(id)
       else if (info.isDimmed) dimmedIds.add(id)
     })
 
@@ -136,11 +135,12 @@ export async function GET(request: Request) {
       return NextResponse.json({ artists, count: artists.length })
     }
 
-    // Standard artist query
+    // Standard artist query — only pipeline artists (not discovery/new)
     let query = supabase
       .from('intel_artists')
       .select('*', { count: 'exact' })
       .not('cm_last_refreshed_at', 'is', null)
+      .eq('discovery_status', 'pipeline')
 
     if (search) {
       query = query.ilike('name', `%${search}%`)
