@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { STAGE_ORDER } from '@/types'
 
 interface Artist {
@@ -256,9 +257,9 @@ export default function RosterPage() {
         <div className="hidden md:flex items-center gap-4 w-full">
           <img src="/pty-logo.svg" alt="P&TY" className="h-9 w-auto shrink-0" />
           <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
-          <a href="/" className="text-sm font-medium" style={{ color: Y }}> Pipeline</a>
-          <a href="/discovery" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Radar</a>
-          <a href="/brand-search" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Match</a>
+          <Link href="/" className="text-sm font-medium" style={{ color: Y }}>Pipeline</Link>
+          <Link href="/discovery" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Radar</Link>
+          <Link href="/brand-search" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Match</Link>
 
           <div className="flex-1" />
 
@@ -304,9 +305,9 @@ export default function RosterPage() {
         <div className="flex md:hidden items-center w-full">
           <img src="/pty-logo.svg" alt="P&TY" className="h-9 w-auto shrink-0" />
           <div className="flex items-center ml-2 shrink-0">
-            <a href="/" className="text-sm font-medium py-3 px-3 block" style={{ color: Y, WebkitTapHighlightColor: 'rgba(249,212,10,0.15)' }}>Pipeline</a>
-            <a href="/discovery" className="text-sm py-3 px-3 block" style={{ color: W50, WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Radar</a>
-            <a href="/brand-search" className="text-sm py-3 px-3 block" style={{ color: W50, WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Match</a>
+            <Link href="/" className="text-sm font-medium py-3 px-3 block" style={{ color: Y, WebkitTapHighlightColor: 'rgba(249,212,10,0.15)' }}>Pipeline</Link>
+            <Link href="/discovery" className="text-sm py-3 px-3 block" style={{ color: W50, WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Radar</Link>
+            <Link href="/brand-search" className="text-sm py-3 px-3 block" style={{ color: W50, WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Match</Link>
           </div>
           <div className="flex-1" />
           <div className="flex items-center shrink-0">

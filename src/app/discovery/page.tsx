@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 // ── Brand colors ──────────────────────────────────────
 const Y = '#F9D40A'
@@ -337,9 +338,9 @@ export default function DiscoveryPage() {
         style={{ background: BG, borderColor: BORDER }}>
         <img src="/pty-logo.svg" alt="P&TY" className="h-9 w-auto shrink-0" />
         <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
-        <a href="/" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50, WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Pipeline</a>
-        <a href="/discovery" className="text-sm py-3 px-3 block font-medium" style={{ color: Y, WebkitTapHighlightColor: 'rgba(249,212,10,0.15)' }}>Radar</a>
-        <a href="/brand-search" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50, WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Match</a>
+        <Link href="/" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50, WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Pipeline</Link>
+        <Link href="/discovery" className="text-sm py-3 px-3 block font-medium" style={{ color: Y, WebkitTapHighlightColor: 'rgba(249,212,10,0.15)' }}>Radar</Link>
+        <Link href="/brand-search" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50, WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Match</Link>
       </nav>
 
       <div className="px-2 md:px-6 py-5">
