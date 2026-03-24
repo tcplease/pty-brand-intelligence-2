@@ -37,6 +37,7 @@ DON'T:
 ## HARD RULES — NO EXCEPTIONS
 
 1. Never include projected gross revenue. Not in subject lines, not in body, not hinted at. Use number of events and markets for tour scale.
+8. Always use first-person pronouns. Never start a sentence by dropping the subject. Write "I saw" not "Saw", "I wanted to" not "Wanted to", "I figured" not "Figured". Every sentence needs a subject.
 2. Never claim a brand has no live music partner. Frame as opportunity to add or expand.
 3. Always write as a P&TY representative.
 4. Never fabricate data. If a stat isn't available, use general industry data or skip it.
