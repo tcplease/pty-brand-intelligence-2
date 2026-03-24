@@ -21,7 +21,22 @@ async function getCMToken(): Promise<string> {
   return data.token
 }
 
+// GET handler for Vercel Cron
+export async function GET(request: Request) {
+  // Verify cron secret to prevent unauthorized access
+  const authHeader = request.headers.get('authorization')
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  return runFestivalSync(request)
+}
+
+// POST handler for manual triggers
 export async function POST(request: Request) {
+  return runFestivalSync(request)
+}
+
+async function runFestivalSync(request: Request) {
   try {
     // Optional: ?limit=3 to test with fewer festivals
     const url = new URL(request.url)
