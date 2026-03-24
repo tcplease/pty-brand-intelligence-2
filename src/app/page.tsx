@@ -250,20 +250,16 @@ export default function RosterPage() {
     <div className="min-h-screen" style={{ background: BG, fontFamily: 'system-ui, sans-serif' }}>
 
       {/* NAV */}
-      <nav className="flex items-center px-4 md:px-6 py-3 border-b sticky top-0 z-50"
+      <nav className="flex items-center gap-4 px-4 md:px-6 py-3 border-b sticky top-0 z-50"
         style={{ background: BG, borderColor: BORDER }}>
+        <img src="/pty-logo.svg" alt="P&TY" className="h-9 w-auto shrink-0" />
+        <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
+        <Link href="/" className="text-sm py-3 px-3 block font-medium" style={{ color: Y, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(249,212,10,0.15)' }}>Pipeline</Link>
+        <Link href="/discovery" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Radar</Link>
+        <Link href="/brand-search" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Match</Link>
 
-        {/* Desktop nav */}
-        <div className="hidden md:flex items-center gap-4 w-full">
-          <img src="/pty-logo.svg" alt="P&TY" className="h-9 w-auto shrink-0" />
-          <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
-          <Link href="/" className="text-sm font-medium" style={{ color: Y }}>Pipeline</Link>
-          <Link href="/discovery" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Radar</Link>
-          <Link href="/brand-search" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Match</Link>
-
-          <div className="flex-1" />
-
-          {/* Desktop search */}
+        {/* Desktop filters */}
+        <div className="hidden md:flex items-center gap-3 ml-auto">
           <div className="relative">
             <input
               placeholder="Search artists..."
@@ -274,24 +270,18 @@ export default function RosterPage() {
               style={{ background: '#1C1C1C', borderColor: BORDER, color: '#fff' }}
             />
           </div>
-
-          {/* Desktop stage filter */}
           <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}
             className="px-3 py-1.5 rounded-lg border text-sm outline-none"
             style={{ background: '#1C1C1C', borderColor: stageFilter !== 'All Deal Stages' ? Y : BORDER, color: 'rgba(255,255,255,0.8)' }}>
             <option>All Deal Stages</option>
             {stageOptions.map(s => <option key={s} value={s}>{STAGE_SHORT_LABELS[s] ?? s}</option>)}
           </select>
-
-          {/* Desktop genre filter */}
           <select value={genre} onChange={e => setGenre(e.target.value)}
             className="px-3 py-1.5 rounded-lg border text-sm outline-none"
             style={{ background: '#1C1C1C', borderColor: genre !== 'All Genres' ? Y : BORDER, color: 'rgba(255,255,255,0.8)' }}>
             <option>All Genres</option>
             {genres.map(g => <option key={g}>{g}</option>)}
           </select>
-
-          {/* Desktop sort */}
           <select value={sort} onChange={e => setSort(e.target.value as any)}
             className="px-3 py-1.5 rounded-lg border text-sm outline-none"
             style={{ background: '#1C1C1C', borderColor: BORDER, color: 'rgba(255,255,255,0.8)' }}>
@@ -299,16 +289,6 @@ export default function RosterPage() {
             <option value="az">A–Z</option>
             <option value="reach">Reach</option>
           </select>
-        </div>
-
-        {/* Mobile nav */}
-        <div className="flex md:hidden items-center w-full">
-          <img src="/pty-logo.svg" alt="P&TY" className="h-9 w-auto shrink-0" />
-          <div className="flex items-center ml-2">
-            <Link href="/" className="text-sm font-medium py-3 px-3 block" style={{ color: Y, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(249,212,10,0.15)' }}>Pipeline</Link>
-            <Link href="/discovery" className="text-sm py-3 px-3 block" style={{ color: W50, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Radar</Link>
-            <Link href="/brand-search" className="text-sm py-3 px-3 block" style={{ color: W50, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Match</Link>
-          </div>
         </div>
       </nav>
 

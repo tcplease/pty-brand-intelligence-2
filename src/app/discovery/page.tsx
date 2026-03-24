@@ -124,7 +124,7 @@ function ArtistCard({
         overflow: 'hidden',
         border: `1px solid ${BORDER}`,
         cursor: 'pointer',
-        animation: `fadeIn 0.3s ease-out ${index * 0.04}s both`,
+        animation: index < 16 ? `fadeIn 0.3s ease-out ${index * 0.04}s both` : 'none',
       }}
       className="transition-all duration-200 hover:border-white/15 group h-full"
       onClick={() => onNavigate(artist.chartmetric_id)}
