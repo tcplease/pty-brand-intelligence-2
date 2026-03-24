@@ -555,11 +555,13 @@ Spotify Followers: ${formatNum(artist.spotify_followers)}
 Instagram Followers: ${formatNum(artist.instagram_followers)}
 TikTok Followers: ${formatNum(artist.tiktok_followers)}
 Audience: ${formatPct(artist.audience_male_pct)} Male, ${formatPct(artist.audience_female_pct)} Female
-Top Age Groups: 18-24 (${formatPct(artist.age_18_24_pct)}), 25-34 (${formatPct(artist.age_25_34_pct)})
+Age Distribution: 13-17 (${formatPct(artist.age_13_17_pct)}), 18-24 (${formatPct(artist.age_18_24_pct)}), 25-34 (${formatPct(artist.age_25_34_pct)}), 35-44 (${formatPct(artist.age_35_44_pct)}), 45-64 (${formatPct(artist.age_45_64_pct)}), 65+ (${formatPct(artist.age_65_plus_pct)})
+Ethnicity: ${artist.audience_ethnicity ? Object.entries(artist.audience_ethnicity).map(([k, v]) => `${k}: ${v}%`).join(', ') : 'N/A'}
 Top Markets: ${artist.top_countries?.slice(0,3).map(c => c.country).join(', ') ?? 'Unknown'}
 Top Brand Affinities: ${brands.slice(0,5).map(b => `${b.brand_name} (${b.affinity_scale.toFixed(1)}x)`).join(', ')}
 Top Sectors: ${sectors.slice(0,5).map(s => s.sector_name).join(', ')}
-${deals.length > 0 ? `Tours: ${deals.map(d => `${d.tour ?? 'Untitled'} (${d.total_events ?? '?'} events${d.proj_gross ? ', proj. gross ' + formatMoney(d.proj_gross) : ''})`).join(', ')}` : ''}
+${deals.length > 0 ? `Tours: ${deals.map(d => `${d.tour ?? 'Untitled'} (${d.total_events ?? '?'} events, stage: ${d.stage ?? 'unknown'})`).join(', ')}` : ''}
+Festival Appearances: ${activity.filter(a => a.event_type === 'festival_added').map(a => a.event_title).slice(0, 5).join(', ') || 'None detected'}
       `.trim()
 
       const res = await fetch('/api/pitch', {
