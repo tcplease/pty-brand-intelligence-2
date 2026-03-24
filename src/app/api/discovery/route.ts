@@ -12,7 +12,7 @@ export async function GET(request: Request) {
       .from('intel_artists')
       .select('*')
       .eq('discovery_status', 'new')
-      .eq('source', 'festival_signal')
+      .in('source', ['festival_signal', 'manual'])
       .order('created_at', { ascending: false })
 
     if (artistError) throw artistError
