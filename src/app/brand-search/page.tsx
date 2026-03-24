@@ -312,9 +312,9 @@ export default function BrandSearchPage() {
         style={{ background: BG, borderColor: BORDER }}>
         <img src="/pty-logo.svg" alt="P&TY" className="h-9 w-auto shrink-0" />
         <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
-        <Link href="/" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50, WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Pipeline</Link>
-        <Link href="/discovery" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50, WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Radar</Link>
-        <Link href="/brand-search" className="text-sm py-3 px-3 block font-medium" style={{ color: Y, WebkitTapHighlightColor: 'rgba(249,212,10,0.15)' }}>Match</Link>
+        <Link href="/" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Pipeline</Link>
+        <Link href="/discovery" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Radar</Link>
+        <Link href="/brand-search" className="text-sm py-3 px-3 block font-medium" style={{ color: Y, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(249,212,10,0.15)' }}>Match</Link>
       </nav>
 
       <div className="px-4 md:px-6 py-6 max-w-[1600px] mx-auto">

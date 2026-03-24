@@ -304,37 +304,36 @@ export default function RosterPage() {
         {/* Mobile nav */}
         <div className="flex md:hidden items-center w-full">
           <img src="/pty-logo.svg" alt="P&TY" className="h-9 w-auto shrink-0" />
-          <div className="flex items-center ml-2 shrink-0">
-            <Link href="/" className="text-sm font-medium py-3 px-3 block" style={{ color: Y, WebkitTapHighlightColor: 'rgba(249,212,10,0.15)' }}>Pipeline</Link>
-            <Link href="/discovery" className="text-sm py-3 px-3 block" style={{ color: W50, WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Radar</Link>
-            <Link href="/brand-search" className="text-sm py-3 px-3 block" style={{ color: W50, WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Match</Link>
-          </div>
-          <div className="flex-1" />
-          <div className="flex items-center shrink-0">
-            {/* Search icon */}
-            <button onClick={() => {
-              setShowMobileSearch(prev => !prev)
-              setTimeout(() => mobileSearchRef.current?.focus(), 100)
-            }} className="p-3" style={{ color: search ? Y : '#888' }}>
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </button>
-            {/* Filter icon with badge */}
-            <button onClick={() => setShowFilterDrawer(true)} className="p-3 relative" style={{ color: activeFilterCount > 0 ? Y : '#888' }}>
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18M7 12h10M11 20h2" />
-              </svg>
-              {activeFilterCount > 0 && (
-                <span className="absolute top-1 right-1 w-4 h-4 rounded-full text-xs font-bold flex items-center justify-center"
-                  style={{ backgroundColor: Y, color: '#0a0a0a', fontSize: '9px' }}>
-                  {activeFilterCount}
-                </span>
-              )}
-            </button>
+          <div className="flex items-center ml-2">
+            <Link href="/" className="text-sm font-medium py-3 px-3 block" style={{ color: Y, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(249,212,10,0.15)' }}>Pipeline</Link>
+            <Link href="/discovery" className="text-sm py-3 px-3 block" style={{ color: W50, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Radar</Link>
+            <Link href="/brand-search" className="text-sm py-3 px-3 block" style={{ color: W50, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Match</Link>
           </div>
         </div>
       </nav>
+
+      {/* Mobile search + filter bar — below nav */}
+      <div className="md:hidden flex items-center justify-end px-4 py-2 border-b" style={{ borderColor: BORDER, background: BG }}>
+        <button onClick={() => {
+          setShowMobileSearch(prev => !prev)
+          setTimeout(() => mobileSearchRef.current?.focus(), 100)
+        }} className="p-3" style={{ color: search ? Y : '#888' }}>
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </button>
+        <button onClick={() => setShowFilterDrawer(true)} className="p-3 relative" style={{ color: activeFilterCount > 0 ? Y : '#888' }}>
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18M7 12h10M11 20h2" />
+          </svg>
+          {activeFilterCount > 0 && (
+            <span className="absolute top-1 right-1 w-4 h-4 rounded-full text-xs font-bold flex items-center justify-center"
+              style={{ backgroundColor: Y, color: '#0a0a0a', fontSize: '9px' }}>
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
+      </div>
 
       {/* Mobile search bar */}
       {showMobileSearch && (
