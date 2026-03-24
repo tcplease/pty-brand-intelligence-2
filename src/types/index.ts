@@ -27,11 +27,23 @@ export interface Artist {
   age_65_plus_pct: number | null
   audience_ethnicity: Record<string, number> | null
   top_countries: { name: string; code: string; pct: number }[] | null
-  source: 'monday' | 'festival_signal' | 'manual' | 'both'
+  top_genres: string[]
+  source: 'monday' | 'festival_signal' | 'manual' | 'both' | 'rising_index'
   cm_last_refreshed_at: string | null
   is_active: boolean
   created_at: string
   updated_at: string
+  // Rising Index fields
+  ri_consistent_growth: number | null
+  ri_synchronous_growth: number | null
+  ri_user_engagement: number | null
+  ri_user_curation: number | null
+  ri_editorial_curation: number | null
+  ri_trigger_cities: number | null
+  ri_international_development: number | null
+  ri_audience_concentration: number | null
+  ri_last_updated_at: string | null
+  recent_momentum: string | null
 }
 
 export interface ArtistContact {
@@ -115,7 +127,7 @@ export interface FestivalAppearance {
 export interface ActivityLogEntry {
   id: string
   chartmetric_id: number
-  event_type: 'festival_added' | 'album_presave' | 'stage_change' | 'added_to_pipeline' | 'metric_spike'
+  event_type: 'festival_added' | 'album_presave' | 'stage_change' | 'added_to_pipeline' | 'metric_spike' | 'rising_index_signal'
   event_title: string
   event_detail: Record<string, any> | null
   event_date: string | null
