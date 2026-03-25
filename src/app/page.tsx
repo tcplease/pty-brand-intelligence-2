@@ -18,6 +18,7 @@ interface Artist {
   is_dimmed?: boolean
   deal_stage?: string | null
   sales_leads?: string[]
+  monday_only?: boolean
 }
 
 interface UserInfo {

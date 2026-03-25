@@ -171,7 +171,63 @@ export async function GET(request: Request) {
         sales_leads: Array.from(stageMap.get(a.chartmetric_id)?.salesLeads ?? []),
       }))
 
-    return NextResponse.json({ artists, count: artists.length })
+    // Add Monday-only artists (no CM record but active deals)
+    const HIDDEN_STAGES_SET = new Set([...HIDDEN_STAGES, 'Closed Deals (Events Completed)'])
+    const { data: mondayOnly } = await supabase
+      .from('intel_monday_items')
+      .select('artist_name, stage, sales_lead, last_show')
+      .is('chartmetric_id', null)
+
+    // Group by artist name, pick best stage
+    const mondayOnlyMap = new Map<string, { bestStage: string | null; salesLeads: Set<string>; isDimmed: boolean }>()
+    for (const item of mondayOnly || []) {
+      const name = (item.artist_name as string)?.trim()
+      if (!name) continue
+      const stage = item.stage as string | null
+      const lastShow = item.last_show as string | null
+      const isHidden = !stage || HIDDEN_STAGES_SET.has(stage)
+      const isExpired = lastShow != null && lastShow < today
+      if (isHidden || isExpired) continue
+
+      const leads = (item.sales_lead as string || '').split(',').map((s: string) => s.trim()).filter(Boolean)
+      const existing = mondayOnlyMap.get(name)
+      if (!existing) {
+        mondayOnlyMap.set(name, {
+          bestStage: stage,
+          salesLeads: new Set(leads),
+          isDimmed: DIMMED_STAGES.includes(stage || ''),
+        })
+      } else {
+        leads.forEach((l: string) => existing.salesLeads.add(l))
+        if (!DIMMED_STAGES.includes(stage || '')) existing.isDimmed = false
+        if (stagePriority(stage) > stagePriority(existing.bestStage)) existing.bestStage = stage
+      }
+    }
+
+    // Filter by search if applicable
+    const mondayOnlyArtists: any[] = []
+    mondayOnlyMap.forEach((info, name) => {
+      if (search && !name.toLowerCase().includes(search.toLowerCase())) return
+      mondayOnlyArtists.push({
+        chartmetric_id: null,
+        name,
+        image_url: null,
+        career_stage: null,
+        cm_score: null,
+        primary_genre: null,
+        spotify_followers: null,
+        instagram_followers: null,
+        tiktok_followers: null,
+        is_dimmed: info.isDimmed,
+        deal_stage: info.bestStage,
+        sales_leads: Array.from(info.salesLeads),
+        monday_only: true,
+      })
+    })
+
+    const allArtists = [...artists, ...mondayOnlyArtists]
+
+    return NextResponse.json({ artists: allArtists, count: allArtists.length })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
