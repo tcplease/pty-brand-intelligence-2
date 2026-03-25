@@ -309,6 +309,53 @@ export default function DiscoveryPage() {
   const [stageFilter, setStageFilter] = useState('')
   const [sortBy, setSortBy] = useState<'festivals' | 'score' | 'recent'>('festivals')
   const [minFestivals, setMinFestivals] = useState(0)
+  const [showAddLeads, setShowAddLeads] = useState(false)
+  const [leadText, setLeadText] = useState('')
+  const [leadSource, setLeadSource] = useState('CAA')
+  const [parsedLeads, setParsedLeads] = useState<Array<{ name: string; tourInfo: string; existsInDb: boolean; discoveryStatus: string | null; cmScore: number | null; careerStage: string | null }>>([])
+  const [parseLoading, setParseLoading] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<{ created: number; existing: number; notFound: number; errors: number } | null>(null)
+
+  const handleParse = async () => {
+    if (!leadText.trim()) return
+    setParseLoading(true)
+    setParsedLeads([])
+    setImportResult(null)
+    try {
+      const res = await fetch('/api/leads/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'parse', text: leadText }),
+      })
+      const data = await res.json()
+      setParsedLeads(data.parsed || [])
+    } catch { /* ignore */ }
+    setParseLoading(false)
+  }
+
+  const handleImport = async () => {
+    const toImport = parsedLeads.filter(l => !l.existsInDb || l.discoveryStatus !== 'pipeline')
+    if (!toImport.length) return
+    setImporting(true)
+    setImportResult(null)
+    try {
+      const res = await fetch('/api/leads/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'import',
+          leads: toImport.map(l => ({ name: l.name, tourInfo: l.tourInfo })),
+          source: leadSource,
+          submittedBy: 'Team', // TODO: use logged-in user name
+        }),
+      })
+      const data = await res.json()
+      setImportResult({ created: data.created, existing: data.existing, notFound: data.notFound, errors: data.errors })
+      if (data.created > 0) fetchArtists()
+    } catch { /* ignore */ }
+    setImporting(false)
+  }
 
   const fetchArtists = () => {
     setLoading(true)
@@ -382,6 +429,13 @@ export default function DiscoveryPage() {
               Artists surfaced from festival lineups. Review and add to your pipeline.
             </p>
           </div>
+          <button
+            onClick={() => { setShowAddLeads(true); setParsedLeads([]); setImportResult(null); setLeadText('') }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-colors shrink-0"
+            style={{ background: Y, color: BG }}
+          >
+            + Add Leads
+          </button>
         </div>
 
         {/* Controls */}
@@ -483,6 +537,155 @@ export default function DiscoveryPage() {
           </div>
         )}
       </div>
+
+      {/* Add Leads Modal */}
+      {showAddLeads && (
+        <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[5vh] px-4" style={{ background: 'rgba(0,0,0,0.8)' }}>
+          <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-xl" style={{ background: SURFACE, border: `1px solid ${BORDER}` }}>
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: BORDER }}>
+              <h2 className="text-base font-bold text-white">Add Leads to Radar</h2>
+              <button onClick={() => setShowAddLeads(false)} className="text-lg" style={{ color: W30 }}>✕</button>
+            </div>
+
+            <div className="px-5 py-4 space-y-4">
+              {/* Source dropdown */}
+              <div>
+                <label className="text-xs font-medium mb-1 block" style={{ color: W50 }}>Source Agency</label>
+                <select value={leadSource} onChange={e => setLeadSource(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                  style={{ background: SURFACE2, borderColor: BORDER, color: W80 }}>
+                  <option value="CAA">CAA</option>
+                  <option value="WME">WME</option>
+                  <option value="Wasserman">Wasserman</option>
+                  <option value="UTA">UTA</option>
+                  <option value="Paradigm">Paradigm</option>
+                  <option value="APA">APA</option>
+                  <option value="ICM">ICM</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              {/* Text area */}
+              <div>
+                <label className="text-xs font-medium mb-1 block" style={{ color: W50 }}>
+                  Paste artist list (any format)
+                </label>
+                <textarea
+                  value={leadText}
+                  onChange={e => setLeadText(e.target.value)}
+                  placeholder={`* AFI\n   * Spring/Fall\n* BRAD PAISLEY\n   * June - October 2026\n* CHRIS STAPLETON\n   * Summer 2026`}
+                  rows={8}
+                  className="w-full px-3 py-2 rounded-lg border text-sm outline-none resize-y font-mono"
+                  style={{ background: SURFACE2, borderColor: BORDER, color: W80 }}
+                />
+              </div>
+
+              {/* Parse button */}
+              {!parsedLeads.length && !importResult && (
+                <button
+                  onClick={handleParse}
+                  disabled={parseLoading || !leadText.trim()}
+                  className="w-full py-2.5 rounded-lg text-sm font-semibold transition-colors"
+                  style={{
+                    background: leadText.trim() ? Y : `${Y}33`,
+                    color: BG,
+                    opacity: parseLoading ? 0.6 : 1,
+                  }}
+                >
+                  {parseLoading ? 'Parsing...' : 'Preview Artists'}
+                </button>
+              )}
+
+              {/* Preview table */}
+              {parsedLeads.length > 0 && !importResult && (
+                <div>
+                  <div className="text-xs font-medium mb-2" style={{ color: W50 }}>
+                    {parsedLeads.length} artists found — {parsedLeads.filter(l => l.existsInDb).length} already in database
+                  </div>
+                  <div className="rounded-lg overflow-hidden border" style={{ borderColor: BORDER }}>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr style={{ background: SURFACE2 }}>
+                          <th className="text-left px-3 py-2 font-medium" style={{ color: W50 }}>Artist</th>
+                          <th className="text-left px-3 py-2 font-medium" style={{ color: W50 }}>Tour Info</th>
+                          <th className="text-left px-3 py-2 font-medium" style={{ color: W50 }}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {parsedLeads.map((lead, i) => (
+                          <tr key={i} style={{ borderTop: `1px solid ${BORDER}` }}>
+                            <td className="px-3 py-2 font-medium text-white">{lead.name}</td>
+                            <td className="px-3 py-2" style={{ color: W50 }}>{lead.tourInfo || '—'}</td>
+                            <td className="px-3 py-2">
+                              {lead.existsInDb ? (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded" style={{
+                                  background: lead.discoveryStatus === 'pipeline' ? `${GREEN}22` : `${BLUE}22`,
+                                  color: lead.discoveryStatus === 'pipeline' ? GREEN : BLUE,
+                                }}>
+                                  {lead.discoveryStatus === 'pipeline' ? 'In Pipeline' : 'On Radar'}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: `${Y}22`, color: Y }}>
+                                  New
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="flex gap-3 mt-4">
+                    <button
+                      onClick={() => { setParsedLeads([]); setImportResult(null) }}
+                      className="flex-1 py-2.5 rounded-lg text-sm font-medium border"
+                      style={{ borderColor: BORDER, color: W50, background: 'transparent' }}
+                    >
+                      Back
+                    </button>
+                    <button
+                      onClick={handleImport}
+                      disabled={importing}
+                      className="flex-1 py-2.5 rounded-lg text-sm font-semibold"
+                      style={{ background: Y, color: BG, opacity: importing ? 0.6 : 1 }}
+                    >
+                      {importing ? 'Importing & Enriching...' : `Add ${parsedLeads.filter(l => !l.existsInDb || l.discoveryStatus !== 'pipeline').length} Artists to Radar`}
+                    </button>
+                  </div>
+
+                  {importing && (
+                    <div className="text-[10px] text-center mt-2" style={{ color: W30 }}>
+                      Pulling full CM profiles, brand affinities, and sector data. This may take a few minutes for large lists.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Import results */}
+              {importResult && (
+                <div className="rounded-lg p-4" style={{ background: `${GREEN}11`, border: `1px solid ${GREEN}33` }}>
+                  <div className="text-sm font-semibold mb-2" style={{ color: GREEN }}>Import Complete</div>
+                  <div className="text-xs space-y-1" style={{ color: W80 }}>
+                    {importResult.created > 0 && <div>✓ {importResult.created} new artists added with full CM profiles</div>}
+                    {importResult.existing > 0 && <div>✓ {importResult.existing} existing artists updated with tour info</div>}
+                    {importResult.notFound > 0 && <div style={{ color: Y }}>⚠ {importResult.notFound} not found on Chartmetric</div>}
+                    {importResult.errors > 0 && <div style={{ color: '#FF4444' }}>✕ {importResult.errors} errors</div>}
+                  </div>
+                  <button
+                    onClick={() => setShowAddLeads(false)}
+                    className="w-full mt-3 py-2 rounded-lg text-sm font-semibold"
+                    style={{ background: Y, color: BG }}
+                  >
+                    Done
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
