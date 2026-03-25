@@ -26,37 +26,35 @@ interface ParsedLead {
 
 function parseLeadText(text: string): ParsedLead[] {
   const leads: ParsedLead[] = []
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
+  // Keep original whitespace — don't trim lines yet
+  const lines = text.split('\n').filter(l => l.trim().length > 0)
 
   let currentName: string | null = null
   let currentTourLines: string[] = []
 
-  for (const line of lines) {
-    // Detect artist name lines: starts with *, bullet, dash+space followed by ALL CAPS or mixed case
-    // Or a line that doesn't start with whitespace/indent markers and isn't a sub-bullet
-    const isBullet = /^[\*\-•]\s+/.test(line)
-    const isSubBullet = /^\s+[\*\-•]\s+/.test(line) || /^\s{2,}/.test(line)
-    const cleanLine = line.replace(/^[\*\-•]\s+/, '').trim()
+  for (const rawLine of lines) {
+    // Count leading whitespace to detect indentation
+    const indent = rawLine.search(/\S/)
+    const cleaned = rawLine.trim().replace(/^[\*\-•]+\s*/, '').trim()
 
-    if (!cleanLine) continue
+    if (!cleaned) continue
 
-    if (isBullet && !isSubBullet) {
-      // Save previous artist
-      if (currentName) {
-        leads.push({ name: currentName, tourInfo: currentTourLines.join(' | ') })
-      }
-      currentName = cleanLine
-      currentTourLines = []
-    } else if (isSubBullet || (currentName && !isBullet)) {
+    // Sub-item: indented (3+ spaces) or starts with whitespace before bullet
+    const isIndented = indent >= 3 || (indent >= 1 && /^[\*\-•]/.test(rawLine.trim()) && currentName)
+
+    // Check if this looks like tour info (dates, seasons, announcing, etc.)
+    const looksLikeTourInfo = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|spring|summer|fall|winter|q[1-4]|20\d{2}|announcing|tbd|release|headline|support|dates?|amps?|arenas?|theaters?|amphitheaters?)\b/i.test(cleaned) ||
+      /^\d{2,4}[-\/]/.test(cleaned)
+
+    if (isIndented || (currentName && looksLikeTourInfo)) {
       // Tour info line
-      const tourLine = cleanLine.replace(/^[\*\-•]\s+/, '').trim()
-      if (tourLine) currentTourLines.push(tourLine)
+      currentTourLines.push(cleaned)
     } else {
-      // Standalone line — treat as artist name
+      // New artist name
       if (currentName) {
         leads.push({ name: currentName, tourInfo: currentTourLines.join(' | ') })
       }
-      currentName = cleanLine
+      currentName = cleaned
       currentTourLines = []
     }
   }
@@ -66,15 +64,21 @@ function parseLeadText(text: string): ParsedLead[] {
     leads.push({ name: currentName, tourInfo: currentTourLines.join(' | ') })
   }
 
-  // Filter out lines that look like tour info but got parsed as names
-  return leads.filter(l => {
-    const lower = l.name.toLowerCase()
-    // Skip lines that are clearly tour dates, not artist names
-    if (/^\d{2,4}[-\/]/.test(l.name)) return false
-    if (/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s/i.test(l.name)) return false
-    if (lower.startsWith('announcing') || lower.startsWith('release') || lower.startsWith('tbd')) return false
-    return true
-  })
+  // Deduplicate by name (keep last occurrence which may have more tour info)
+  const seen = new Map<string, ParsedLead>()
+  for (const lead of leads) {
+    const key = lead.name.toLowerCase()
+    const existing = seen.get(key)
+    if (existing) {
+      // Merge tour info
+      const combined = [existing.tourInfo, lead.tourInfo].filter(Boolean).join(' | ')
+      seen.set(key, { name: lead.name, tourInfo: combined })
+    } else {
+      seen.set(key, lead)
+    }
+  }
+
+  return Array.from(seen.values())
 }
 
 // Step 1: Parse only (for preview)
