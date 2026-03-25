@@ -36,7 +36,7 @@ export async function GET(request: Request) {
     // Strategy: get distinct chartmetric_ids and their "best" stage per artist.
     const { data: mondayStages, error: mondayError } = await supabase
       .from('intel_monday_items')
-      .select('chartmetric_id, stage, last_show')
+      .select('chartmetric_id, stage, last_show, sales_lead')
       .not('chartmetric_id', 'is', null)
 
     if (mondayError) throw mondayError
@@ -49,7 +49,7 @@ export async function GET(request: Request) {
     //   - The displayed stage is the highest-priority ACTIVE deal
     //   - Deals with no last_show are treated as active
     const today = new Date().toISOString().split('T')[0]
-    const stageMap = new Map<number, { bestStage: string | null; allInactive: boolean; isDimmed: boolean }>()
+    const stageMap = new Map<number, { bestStage: string | null; allInactive: boolean; isDimmed: boolean; salesLeads: Set<string> }>()
 
     for (const item of mondayStages || []) {
       const id = item.chartmetric_id as number
@@ -60,6 +60,10 @@ export async function GET(request: Request) {
       const isExpired = lastShow != null && lastShow < today
       const isInactive = isHiddenStage || isExpired
 
+      // Extract sales leads from this item
+      const itemLeads = (item as Record<string, unknown>).sales_lead as string | null
+      const leadNames = itemLeads ? itemLeads.split(',').map((s: string) => s.trim()).filter(Boolean) : []
+
       const existing = stageMap.get(id)
 
       if (!existing) {
@@ -67,8 +71,11 @@ export async function GET(request: Request) {
           bestStage: isInactive ? null : stage,
           allInactive: isInactive,
           isDimmed: !isInactive && DIMMED_STAGES.includes(stage || ''),
+          salesLeads: new Set(leadNames),
         })
       } else {
+        // Add sales leads from this deal too
+        leadNames.forEach((n: string) => existing.salesLeads.add(n))
         if (!isInactive) {
           // This deal is active — artist should be visible
           existing.allInactive = false
@@ -129,6 +136,7 @@ export async function GET(request: Request) {
           },
           is_dimmed: dimmedIds.has(row.intel_artists.chartmetric_id),
           deal_stage: stageMap.get(row.intel_artists.chartmetric_id)?.bestStage ?? null,
+          sales_leads: Array.from(stageMap.get(row.intel_artists.chartmetric_id)?.salesLeads ?? []),
         }))
         .filter((a: any) => !hiddenIds.has(a.chartmetric_id))
 
@@ -160,6 +168,7 @@ export async function GET(request: Request) {
         ...a,
         is_dimmed: dimmedIds.has(a.chartmetric_id),
         deal_stage: stageMap.get(a.chartmetric_id)?.bestStage ?? null,
+        sales_leads: Array.from(stageMap.get(a.chartmetric_id)?.salesLeads ?? []),
       }))
 
     return NextResponse.json({ artists, count: artists.length })

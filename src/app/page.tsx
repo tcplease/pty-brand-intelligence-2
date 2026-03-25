@@ -17,6 +17,14 @@ interface Artist {
   tiktok_followers: number | null
   is_dimmed?: boolean
   deal_stage?: string | null
+  sales_leads?: string[]
+}
+
+interface UserInfo {
+  name: string
+  email: string
+  role: string
+  monday_person_name: string | null
 }
 
 // ── Brand colors ──────────────────────────────────────
@@ -197,8 +205,17 @@ export default function RosterPage() {
   const [sort, setSort] = useState<'score' | 'az' | 'reach'>('score')
   const [showFilterDrawer, setShowFilterDrawer] = useState(false)
   const [showMobileSearch, setShowMobileSearch] = useState(false)
+  const [myDeals, setMyDeals] = useState(false)
+  const [user, setUser] = useState<UserInfo | null>(null)
   const searchTimeoutRef = useRef<NodeJS.Timeout>()
   const mobileSearchRef = useRef<HTMLInputElement>(null)
+
+  // Fetch current user info
+  useEffect(() => {
+    fetch('/api/me').then(r => r.json()).then(d => {
+      if (d.email) setUser(d)
+    }).catch(() => {})
+  }, [])
 
   const activeFilterCount = [
     genre !== 'All Genres',
@@ -232,13 +249,16 @@ export default function RosterPage() {
 
   useEffect(() => {
     let result = [...allArtists]
+    if (myDeals && user?.monday_person_name) {
+      result = result.filter(a => a.sales_leads?.some(lead => lead === user.monday_person_name))
+    }
     if (genre !== 'All Genres') result = result.filter(a => a.primary_genre === genre)
     if (stageFilter !== 'All Deal Stages') result = result.filter(a => a.deal_stage === stageFilter)
     if (sort === 'score') result.sort((a, b) => (b.cm_score ?? 0) - (a.cm_score ?? 0))
     if (sort === 'az') result.sort((a, b) => a.name.localeCompare(b.name))
     if (sort === 'reach') result.sort((a, b) => (b.spotify_followers ?? 0) - (a.spotify_followers ?? 0))
     setArtists(result)
-  }, [allArtists, genre, stageFilter, sort])
+  }, [allArtists, genre, stageFilter, sort, myDeals, user])
 
   const handleSearch = (value: string) => {
     setSearchInput(value)
@@ -257,6 +277,23 @@ export default function RosterPage() {
         <Link href="/" className="text-sm py-3 px-3 block font-medium" style={{ color: Y, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(249,212,10,0.15)' }}>Pipeline</Link>
         <Link href="/discovery" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Radar</Link>
         <Link href="/brand-search" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Match</Link>
+
+        {/* My Deals toggle */}
+        {user?.monday_person_name && (
+          <button
+            onClick={() => setMyDeals(prev => !prev)}
+            className="text-xs px-3 py-1.5 rounded-full border transition-colors"
+            style={{
+              borderColor: myDeals ? Y : BORDER,
+              background: myDeals ? Y : 'transparent',
+              color: myDeals ? BG : W50,
+              fontWeight: myDeals ? 600 : 400,
+              touchAction: 'manipulation',
+            }}
+          >
+            My Deals
+          </button>
+        )}
 
         {/* Desktop filters */}
         <div className="hidden md:flex items-center gap-3 ml-auto">
@@ -289,6 +326,18 @@ export default function RosterPage() {
             <option value="az">A–Z</option>
             <option value="reach">Reach</option>
           </select>
+          {user && (
+            <div className="flex items-center gap-2 ml-2 pl-2 border-l" style={{ borderColor: BORDER }}>
+              <span className="text-xs" style={{ color: W50 }}>{user.name}</span>
+              <button
+                onClick={async () => { await fetch('/api/auth/signout', { method: 'POST' }); window.location.href = '/login' }}
+                className="text-xs hover:text-white transition-colors"
+                style={{ color: W30 }}
+              >
+                Sign out
+              </button>
+            </div>
+          )}
         </div>
       </nav>
 
