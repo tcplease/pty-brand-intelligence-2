@@ -4,7 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
 // DRY RUN MODE — set to false when ready to write to Monday
-const DRY_RUN = true
+const DRY_RUN = false
 
 const MONDAY_TOKEN = process.env.MONDAY_API_TOKEN || ''
 const BOARD_ID = '2696356409' // Events Deals board
