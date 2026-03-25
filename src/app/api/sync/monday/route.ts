@@ -159,16 +159,22 @@ async function syncDeals() {
     console.log(`Deals upserted ${upserted}/${rows.length}`)
   }
 
-  return { total: items.length, upserted }
+  return { total: items.length, upserted, items }
 }
 
-// ── Step 2: Sync contacts from CRM ───────────────────
-async function syncContacts() {
-  const serviceClient = createServiceClient()
+// ── Contact mirror columns on the DEAL board ─────────
+// These mirror columns on the deals board contain contact info
+// pulled from the connected CRM board (2696356486)
+const CONTACT_MIRRORS = {
+  mirror0: 'management_company',            // e.g. "Palm Tree Crew"
+  lookup_mkkyxpdw: 'manager_email',         // e.g. "myles@palmtreemgmt.com"
+  mirror_mkkbdz5z: 'agent_company',         // e.g. "Wasserman"
+  dup__of_agent_company_mkkywgqg: 'agent_email', // e.g. "ehancock@teamwass.com"
+} as const
 
-  // Fetch all CRM contacts
-  const contacts = await fetchAllBoardItems(CRM_BOARD_ID)
-  console.log(`Total CRM contacts: ${contacts.length}`)
+// ── Step 2: Sync contacts from deal board mirrors ────
+async function syncContacts(dealItems: any[]) {
+  const serviceClient = createServiceClient()
 
   // Get deal ID → chartmetric_id mapping
   const { data: mondayItems, error: mondayError } = await serviceClient
@@ -183,80 +189,154 @@ async function syncContacts() {
     dealIdToCmId.set(String(item.monday_item_id), item.chartmetric_id)
   }
 
-  console.log(`Deal→artist mappings: ${dealIdToCmId.size}`)
+  console.log(`Deal->artist mappings: ${dealIdToCmId.size}`)
 
-  const toInsert: any[] = []
-  let skipped = 0
+  // Extract contacts from deal board mirror columns
+  const contactMap = new Map<string, any>() // key: cmId|role|email to dedupe
 
-  for (const contact of contacts) {
-    const cols = contact.column_values || []
-    const name = contact.name || null
-    const email = getColText(cols, 'email')
-    const phone = getColText(cols, 'phone')
-    const typeText = getColText(cols, 'status')
+  for (const item of dealItems) {
+    const cmId = dealIdToCmId.get(String(item.id))
+    if (!cmId) continue
 
-    // Determine role from which deal relation column has linked items
-    const managerDealIds = getLinkedItemIds(cols, 'link_to___deals')
-    const agentDealIds = getLinkedItemIds(cols, 'link_to_events_deals_mkkbg5x5')
-    const bizDealIds = getLinkedItemIds(cols, 'connect_boards_mkkbkjg7')
+    const cols = item.column_values || []
 
-    let role: 'manager' | 'agent' | 'business_manager' = 'manager'
-    let dealIds = managerDealIds
-
-    if (agentDealIds.length > 0) {
-      role = 'agent'
-      dealIds = agentDealIds
-    } else if (bizDealIds.length > 0) {
-      role = 'business_manager'
-      dealIds = bizDealIds
-    } else if (managerDealIds.length > 0) {
-      role = 'manager'
-      dealIds = managerDealIds
-    } else if (typeText) {
-      // Fall back to Type field if no deal links
-      const t = typeText.toLowerCase()
-      if (t.includes('agent') || t.includes('agency')) role = 'agent'
-      else if (t.includes('biz') || t.includes('business')) role = 'business_manager'
-      // No deal links = can't match to an artist
-      skipped++
-      continue
-    } else {
-      skipped++
-      continue
+    // Helper to get display_value from a mirror column
+    const getMirror = (colId: string): string | null => {
+      const col = cols.find((c: any) => c.id === colId)
+      return col?.display_value || col?.text || null
     }
 
-    // Find chartmetric IDs from linked deals
-    const chartmetricIds = new Set<number>()
-    for (const dealId of dealIds) {
-      const cmId = dealIdToCmId.get(dealId)
-      if (cmId) chartmetricIds.add(cmId)
+    const mgmtCompany = getMirror('mirror0')
+    const mgmtEmails = getMirror('lookup_mkkyxpdw')
+    const agentCompany = getMirror('mirror_mkkbdz5z')
+    const agentEmails = getMirror('dup__of_agent_company_mkkywgqg')
+
+    // Parse management contacts (can be comma-separated)
+    if (mgmtEmails) {
+      const emails = mgmtEmails.split(',').map((e: string) => e.trim()).filter((e: string) => e.includes('@'))
+      const companies = mgmtCompany ? mgmtCompany.split(',').map((c: string) => c.trim()) : []
+
+      for (const email of emails) {
+        const key = `${cmId}|manager|${email}`
+        if (!contactMap.has(key)) {
+          contactMap.set(key, {
+            chartmetric_id: cmId,
+            role: 'manager',
+            contact_name: null,
+            company_name: companies[0] || null,
+            email,
+            phone: null,
+            linkedin_url: null,
+            source: 'monday',
+            last_verified_at: new Date().toISOString(),
+          })
+        }
+      }
     }
 
-    if (chartmetricIds.size === 0) {
-      skipped++
-      continue
-    }
+    // Parse agent contacts
+    if (agentEmails) {
+      const emails = agentEmails.split(',').map((e: string) => e.trim()).filter((e: string) => e.includes('@'))
+      const companies = agentCompany ? agentCompany.split(',').map((c: string) => c.trim()) : []
 
-    for (const chartmetricId of chartmetricIds) {
-      toInsert.push({
-        chartmetric_id: chartmetricId,
-        role,
-        contact_name: name,
-        company_name: null, // Company is a board_relation — not available via simple column read
-        email,
-        phone,
-        linkedin_url: null,
-        source: 'monday',
-        last_verified_at: new Date().toISOString(),
-      })
+      for (const email of emails) {
+        const key = `${cmId}|agent|${email}`
+        if (!contactMap.has(key)) {
+          contactMap.set(key, {
+            chartmetric_id: cmId,
+            role: 'agent',
+            contact_name: null,
+            company_name: companies[0] || null,
+            email,
+            phone: null,
+            linkedin_url: null,
+            source: 'monday',
+            last_verified_at: new Date().toISOString(),
+          })
+        }
+      }
     }
   }
 
-  console.log(`Contacts to insert: ${toInsert.length}, skipped: ${skipped}`)
+  const toInsert = Array.from(contactMap.values())
+  console.log(`Contacts extracted from deal mirrors: ${toInsert.length}`)
 
   if (toInsert.length === 0) {
-    return { total: contacts.length, skipped, upserted: 0 }
+    return { total: dealItems.length, upserted: 0 }
   }
+
+  // Also pull from CRM board for additional contacts (names, phones, etc.)
+  try {
+    const crmContacts = await fetchAllBoardItems(CRM_BOARD_ID)
+    console.log(`CRM board contacts: ${crmContacts.length}`)
+
+    for (const contact of crmContacts) {
+      const cols = contact.column_values || []
+      const name = contact.name || null
+      const email = getColText(cols, 'email')
+      const phone = getColText(cols, 'phone')
+
+      const managerDealIds = getLinkedItemIds(cols, 'link_to___deals')
+      const agentDealIds = getLinkedItemIds(cols, 'link_to_events_deals_mkkbg5x5')
+      const bizDealIds = getLinkedItemIds(cols, 'connect_boards_mkkbkjg7')
+
+      let role: 'manager' | 'agent' | 'business_manager' = 'manager'
+      let dealIds = managerDealIds
+
+      if (agentDealIds.length > 0) { role = 'agent'; dealIds = agentDealIds }
+      else if (bizDealIds.length > 0) { role = 'business_manager'; dealIds = bizDealIds }
+      else if (managerDealIds.length > 0) { role = 'manager'; dealIds = managerDealIds }
+      else continue
+
+      for (const dealId of dealIds) {
+        const cmId = dealIdToCmId.get(dealId)
+        if (!cmId) continue
+
+        if (email) {
+          const key = `${cmId}|${role}|${email}`
+          // Enrich existing or add new
+          if (contactMap.has(key)) {
+            const existing = contactMap.get(key)
+            if (name) existing.contact_name = name
+            if (phone) existing.phone = phone
+          } else {
+            contactMap.set(key, {
+              chartmetric_id: cmId,
+              role,
+              contact_name: name,
+              company_name: null,
+              email,
+              phone,
+              linkedin_url: null,
+              source: 'monday',
+              last_verified_at: new Date().toISOString(),
+            })
+          }
+        } else if (name) {
+          // Contact with name but no email
+          const key = `${cmId}|${role}|${name}`
+          if (!contactMap.has(key)) {
+            contactMap.set(key, {
+              chartmetric_id: cmId,
+              role,
+              contact_name: name,
+              company_name: null,
+              email: null,
+              phone,
+              linkedin_url: null,
+              source: 'monday',
+              last_verified_at: new Date().toISOString(),
+            })
+          }
+        }
+      }
+    }
+  } catch (crmErr: any) {
+    console.error('CRM board fetch failed (non-fatal):', crmErr.message)
+  }
+
+  const finalContacts = Array.from(contactMap.values())
+  console.log(`Total contacts after CRM enrichment: ${finalContacts.length}`)
 
   // Clear existing Monday contacts and re-insert
   const { error: deleteError } = await serviceClient
@@ -269,8 +349,8 @@ async function syncContacts() {
   const BATCH = 200
   let upserted = 0
 
-  for (let i = 0; i < toInsert.length; i += BATCH) {
-    const batch = toInsert.slice(i, i + BATCH)
+  for (let i = 0; i < finalContacts.length; i += BATCH) {
+    const batch = finalContacts.slice(i, i + BATCH)
     const { error } = await serviceClient
       .from('intel_artist_contacts')
       .insert(batch)
@@ -283,7 +363,7 @@ async function syncContacts() {
   }
 
   console.log(`Contacts upserted: ${upserted}`)
-  return { total: contacts.length, skipped, upserted }
+  return { total: finalContacts.length, upserted }
 }
 
 // ── Main handler ──────────────────────────────────────
@@ -292,9 +372,9 @@ export async function POST() {
     console.log('Starting Monday sync...')
 
     const deals = await syncDeals()
-    console.log('Deals sync complete:', deals)
+    console.log('Deals sync complete:', { total: deals.total, upserted: deals.upserted })
 
-    const contacts = await syncContacts()
+    const contacts = await syncContacts(deals.items)
     console.log('Contacts sync complete:', contacts)
 
     return NextResponse.json({
