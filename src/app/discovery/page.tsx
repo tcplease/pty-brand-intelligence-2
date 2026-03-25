@@ -103,15 +103,18 @@ function ArtistCard({
   onDismiss,
   onNavigate,
   onActivity,
+  onAddToMonday,
 }: {
   artist: DiscoveryArtist
   index: number
   onDismiss: (id: number) => void
   onNavigate: (id: number) => void
   onActivity: (id: number) => void
+  onAddToMonday: (id: number) => Promise<boolean>
 }) {
   const [dismissing, setDismissing] = useState(false)
-  const [showTooltip, setShowTooltip] = useState(false)
+  const [addingToMonday, setAddingToMonday] = useState(false)
+  const [addResult, setAddResult] = useState<'success' | 'error' | null>(null)
   const careerColor = CAREER_COLORS[artist.career_stage?.toLowerCase() ?? ''] ?? W50
   const fests = uniqueFestivals(artist.festivals)
   const genre = primaryGenre(artist.primary_genre)
@@ -233,20 +236,41 @@ function ArtistCard({
 
         <div className="flex items-center" style={{ gap: '6px', paddingTop: '8px', borderTop: `1px solid ${BORDER}` }}>
           <div className="relative flex-1">
-            <button
-              onMouseEnter={() => setShowTooltip(true)}
-              onMouseLeave={() => setShowTooltip(false)}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full"
-              style={{ fontSize: '11px', fontWeight: 600, padding: '8px 0', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', color: W30, border: 'none', cursor: 'not-allowed' }}
-            >
-              Add to Monday
-            </button>
-            {showTooltip && (
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1 rounded-lg whitespace-nowrap z-10"
-                style={{ fontSize: '10px', background: '#333', color: W80 }}>
-                Coming soon — v2.1
+            {addResult === 'success' ? (
+              <div className="w-full text-center" style={{ fontSize: '11px', fontWeight: 600, padding: '8px 0', color: GREEN }}>
+                Moved to Pipeline ✓
               </div>
+            ) : (
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation()
+                  if (addingToMonday || addResult) return
+                  setAddingToMonday(true)
+                  setAddResult(null)
+                  const success = await onAddToMonday(artist.chartmetric_id)
+                  setAddingToMonday(false)
+                  setAddResult(success ? 'success' : 'error')
+                  if (success) {
+                    setTimeout(() => setDismissing(true), 1500)
+                  } else {
+                    setTimeout(() => setAddResult(null), 3000)
+                  }
+                }}
+                className="w-full transition-colors"
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  padding: '8px 0',
+                  borderRadius: '6px',
+                  background: addResult === 'error' ? '#FF444420' : `${Y}15`,
+                  color: addResult === 'error' ? '#FF4444' : Y,
+                  border: 'none',
+                  cursor: addingToMonday ? 'wait' : 'pointer',
+                  opacity: addingToMonday ? 0.6 : 1,
+                }}
+              >
+                {addingToMonday ? 'Adding...' : addResult === 'error' ? 'Failed - try again' : 'Add to Pipeline'}
+              </button>
             )}
           </div>
           <button
@@ -436,6 +460,24 @@ export default function DiscoveryPage() {
                 onDismiss={handleDismiss}
                 onNavigate={(id) => router.push(`/artists/${id}`)}
                 onActivity={(id) => router.push(`/artists/${id}?tab=activity`)}
+                onAddToMonday={async (id) => {
+                  try {
+                    const res = await fetch('/api/monday/add-artist', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ chartmetric_id: id }),
+                    })
+                    const data = await res.json()
+                    if (data.success) {
+                      // Remove from local state after delay
+                      setTimeout(() => {
+                        setArtists(prev => prev.filter(a => a.chartmetric_id !== id))
+                      }, 2000)
+                      return true
+                    }
+                    return false
+                  } catch { return false }
+                }}
               />
             ))}
           </div>
