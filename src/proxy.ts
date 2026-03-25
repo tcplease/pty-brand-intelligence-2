@@ -1,22 +1,64 @@
+import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  // Public routes — no auth required
   if (
-    request.nextUrl.pathname === '/login' ||
-    request.nextUrl.pathname.startsWith('/api/') ||
-    request.nextUrl.pathname.startsWith('/_next/') ||
-    request.nextUrl.pathname === '/favicon.ico' ||
-    request.nextUrl.pathname === '/pty-logo.svg'
+    pathname === '/login' ||
+    pathname.startsWith('/auth/') ||
+    pathname.startsWith('/api/sync/') ||
+    pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/_next/') ||
+    pathname === '/favicon.ico' ||
+    pathname === '/pty-logo.svg'
   ) {
     return NextResponse.next()
   }
 
-  const authCookie = request.cookies.get('pty-auth')
+  let response = NextResponse.next({
+    request: { headers: request.headers },
+  })
 
-  if (!authCookie || authCookie.value !== process.env.APP_PASSWORD) {
-    return NextResponse.redirect(new URL('/login', request.url))
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          )
+          response = NextResponse.next({
+            request: { headers: request.headers },
+          })
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          )
+        },
+      },
+    }
+  )
+
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // Not logged in — redirect to login
+  if (!user) {
+    const loginUrl = new URL('/login', request.url)
+    loginUrl.searchParams.set('redirect', pathname)
+    return NextResponse.redirect(loginUrl)
   }
 
-  return NextResponse.next()
+  return response
+}
+
+export const config = {
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|pty-logo.svg).*)',
+  ],
 }
