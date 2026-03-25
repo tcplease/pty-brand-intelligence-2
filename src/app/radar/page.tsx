@@ -362,7 +362,7 @@ export default function DiscoveryPage() {
     const params = new URLSearchParams({ period })
     if (period === 'all') params.set('all', 'true')
 
-    fetch(`/api/radar?${params.toString()}`)
+    fetch(`/api/discovery?${params.toString()}`)
       .then(r => r.json())
       .then(data => {
         setArtists(data.artists || [])
@@ -374,7 +374,7 @@ export default function DiscoveryPage() {
   useEffect(() => { fetchArtists() }, [period])
 
   const handleDismiss = async (cmId: number) => {
-    await fetch('/api/radar', {
+    await fetch('/api/discovery', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chartmetric_id: cmId, action: 'dismiss' }),
