@@ -119,24 +119,117 @@ async function runFestivalSync(request: Request) {
 
         artistFestCount[cmId] = (artistFestCount[cmId] || 0) + 1
 
-        // New artist
+        // New artist — full CM enrichment
         if (!existingIds.has(cmId)) {
+          // Pull full profile for cm_score, demographics, genre
+          await sleep(500)
+          let profile: Record<string, any> = {}
+          try {
+            const profRes = await fetch(`${CM_BASE}/artist/${cmId}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            })
+            if (profRes.ok) {
+              profile = (await profRes.json())?.obj || {}
+            }
+          } catch { /* use lineup data as fallback */ }
+
+          // Pull career stage (confirms score)
+          await sleep(500)
+          let careerStage = artist.career_status?.stage || null
+          let cmScore = profile.cm_artist_score || null
+          try {
+            const careerRes = await fetch(`${CM_BASE}/artist/${cmId}/career?limit=1`, {
+              headers: { Authorization: `Bearer ${token}` },
+            })
+            if (careerRes.ok) {
+              const careerData = (await careerRes.json())?.obj?.[0]
+              if (careerData?.stage) careerStage = careerData.stage
+            }
+          } catch { /* use lineup career stage */ }
+
+          // Pull Spotify ID from URLs
+          await sleep(500)
+          let spotifyArtistId: string | null = null
+          try {
+            const urlsRes = await fetch(`${CM_BASE}/artist/${cmId}/urls`, {
+              headers: { Authorization: `Bearer ${token}` },
+            })
+            if (urlsRes.ok) {
+              const urlsData = (await urlsRes.json())?.obj || []
+              const spEntry = urlsData.find((u: any) => u.domain === 'spotify')
+              if (spEntry?.url?.[0]) {
+                const spUrl = spEntry.url[0]
+                const spMatch = spUrl.match(/artist\/([a-zA-Z0-9]+)/)
+                if (spMatch) spotifyArtistId = spMatch[1]
+              }
+            }
+          } catch { /* skip */ }
+
           const { error } = await supabase.from('intel_artists').insert({
             chartmetric_id: cmId,
-            name: artist.name,
-            image_url: artist.image_url || null,
-            career_stage: artist.career_status?.stage || null,
-            primary_genre: artist.genres?.split(',')[0]?.trim() || null,
-            spotify_followers: artist.sp_followers || null,
-            spotify_monthly_listeners: artist.sp_monthly_listeners || null,
-            instagram_followers: artist.ins_followers || null,
-            youtube_subscribers: artist.ycs_subscribers || null,
-            tiktok_followers: artist.tiktok_followers || null,
+            name: profile.name || artist.name,
+            image_url: profile.image_url || artist.image_url || null,
+            cm_score: cmScore,
+            career_stage: careerStage,
+            primary_genre: profile.artist_genres?.[0]?.name || artist.genres?.split(',')[0]?.trim() || null,
+            spotify_followers: profile.sp_followers || artist.sp_followers || null,
+            spotify_monthly_listeners: profile.sp_monthly_listeners || artist.sp_monthly_listeners || null,
+            instagram_followers: profile.ins_followers || artist.ins_followers || null,
+            youtube_subscribers: profile.ycs_subscribers || artist.ycs_subscribers || null,
+            tiktok_followers: profile.tiktok_followers || artist.tiktok_followers || null,
+            audience_male_pct: profile.sp_fans_male_pct || null,
+            audience_female_pct: profile.sp_fans_female_pct || null,
+            spotify_artist_id: spotifyArtistId,
             source: 'festival_signal',
             is_active: true,
+            cm_last_refreshed_at: new Date().toISOString(),
           })
           if (!error) {
             existingIds.add(cmId)
+
+            // Pull brand affinities
+            await sleep(500)
+            try {
+              const brandRes = await fetch(`${CM_BASE}/artist/${cmId}/instagram-audience-data?field=brandAffinity`, {
+                headers: { Authorization: `Bearer ${token}` },
+              })
+              if (brandRes.ok) {
+                const brands = ((await brandRes.json())?.obj || []).filter((b: any) => b.affinity >= 1.0)
+                if (brands.length) {
+                  await supabase.from('intel_artist_brand_affinities').insert(
+                    brands.map((b: any) => ({
+                      chartmetric_id: cmId,
+                      brand_id: b.id || 0,
+                      brand_name: b.name,
+                      affinity_scale: b.affinity,
+                      follower_count: b.followers || null,
+                      interest_category: b.category || null,
+                    }))
+                  )
+                }
+              }
+            } catch { /* skip */ }
+
+            // Pull sector affinities
+            await sleep(500)
+            try {
+              const sectorRes = await fetch(`${CM_BASE}/artist/${cmId}/instagram-audience-data?field=interests`, {
+                headers: { Authorization: `Bearer ${token}` },
+              })
+              if (sectorRes.ok) {
+                const sectors = ((await sectorRes.json())?.obj || []).filter((s: any) => s.affinity >= 1.0)
+                if (sectors.length) {
+                  await supabase.from('intel_artist_sector_affinities').insert(
+                    sectors.map((s: any) => ({
+                      chartmetric_id: cmId,
+                      sector_id: s.id || 0,
+                      sector_name: s.name,
+                      affinity_scale: s.affinity,
+                    }))
+                  )
+                }
+              }
+            } catch { /* skip */ }
             totalNew++
             await supabase.from('activity_log').insert({
               chartmetric_id: cmId,
