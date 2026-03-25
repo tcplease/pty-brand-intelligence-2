@@ -124,7 +124,7 @@ export async function POST(request: Request) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': MONDAY_TOKEN,
+          'Authorization': `Bearer ${MONDAY_TOKEN}`,
         },
         body: JSON.stringify({ query: mutation }),
       })
