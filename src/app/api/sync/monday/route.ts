@@ -366,8 +366,208 @@ async function syncContacts(dealItems: any[]) {
   return { total: finalContacts.length, upserted }
 }
 
+// ── CM enrichment for new artists ─────────────────────
+const CM_REFRESH_TOKEN = process.env.CHARTMETRIC_TOKEN!
+const CM_BASE = 'https://api.chartmetric.com/api'
+
+async function getCMToken(): Promise<string> {
+  const res = await fetch(`${CM_BASE}/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshtoken: CM_REFRESH_TOKEN }),
+  })
+  const data = await res.json()
+  if (!data.token) throw new Error('Failed to get CM token')
+  return data.token
+}
+
+function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)) }
+
+async function enrichNewArtists() {
+  // Find Monday items with chartmetric_id that don't have a matching intel_artists record
+  const { data: mondayItems } = await supabase
+    .from('intel_monday_items')
+    .select('chartmetric_id, artist_name')
+    .not('chartmetric_id', 'is', null)
+
+  if (!mondayItems?.length) return { enriched: 0, cm_calls: 0 }
+
+  const cmIds = [...new Set(mondayItems.map(i => i.chartmetric_id))]
+
+  const { data: existingArtists } = await supabase
+    .from('intel_artists')
+    .select('chartmetric_id')
+    .in('chartmetric_id', cmIds)
+
+  const existingSet = new Set((existingArtists || []).map(a => a.chartmetric_id))
+  const newItems = mondayItems.filter(i => !existingSet.has(i.chartmetric_id))
+
+  // Dedupe by chartmetric_id
+  const seen = new Set<number>()
+  const toEnrich = newItems.filter(i => {
+    if (seen.has(i.chartmetric_id)) return false
+    seen.add(i.chartmetric_id)
+    return true
+  })
+
+  if (!toEnrich.length) return { enriched: 0, cm_calls: 0 }
+
+  let cmToken: string
+  try {
+    cmToken = await getCMToken()
+  } catch {
+    console.error('CM token failed, skipping enrichment')
+    return { enriched: 0, cm_calls: 0, error: 'CM token failed' }
+  }
+
+  let enriched = 0
+  let cmCalls = 0
+
+  for (const item of toEnrich) {
+    try {
+      const cmId = item.chartmetric_id
+
+      // Profile
+      await sleep(600)
+      const profRes = await fetch(`${CM_BASE}/artist/${cmId}`, {
+        headers: { Authorization: `Bearer ${cmToken}` },
+      })
+      cmCalls++
+      if (!profRes.ok) continue
+      const p = (await profRes.json()).obj
+      if (!p) continue
+
+      // Career stage
+      await sleep(500)
+      const careerRes = await fetch(`${CM_BASE}/artist/${cmId}/career?limit=1`, {
+        headers: { Authorization: `Bearer ${cmToken}` },
+      })
+      cmCalls++
+      const career = (await careerRes.json()).obj?.[0]
+
+      // Brand affinities
+      await sleep(500)
+      const brandRes = await fetch(`${CM_BASE}/artist/${cmId}/instagram-audience-data?field=brandAffinity`, {
+        headers: { Authorization: `Bearer ${cmToken}` },
+      })
+      cmCalls++
+      const brands = ((await brandRes.json()).obj || []).filter((b: any) => (b.affinity || 0) >= 1.0)
+
+      // Sector affinities
+      await sleep(500)
+      const sectorRes = await fetch(`${CM_BASE}/artist/${cmId}/instagram-audience-data?field=interests`, {
+        headers: { Authorization: `Bearer ${cmToken}` },
+      })
+      cmCalls++
+      const sectors = ((await sectorRes.json()).obj || []).filter((s: any) => (s.affinity || 0) >= 1.0)
+
+      // Spotify ID from URLs
+      await sleep(500)
+      const urlsRes = await fetch(`${CM_BASE}/artist/${cmId}/urls`, {
+        headers: { Authorization: `Bearer ${cmToken}` },
+      })
+      cmCalls++
+      const urls = (await urlsRes.json()).obj || []
+      const spotifyUrl = urls.find((u: any) => u.domain === 'spotify')?.url?.[0] || ''
+      const spotifyId = spotifyUrl.match(/artist\/([a-zA-Z0-9]+)/)?.[1] || null
+
+      // Demographics
+      await sleep(500)
+      const demoRes = await fetch(`${CM_BASE}/artist/${cmId}/instagram-audience-data?field=demographics`, {
+        headers: { Authorization: `Bearer ${cmToken}` },
+      })
+      cmCalls++
+      const demo = (await demoRes.json()).obj
+
+      // Insert artist
+      const artistData: Record<string, unknown> = {
+        chartmetric_id: cmId,
+        name: p.name || item.artist_name,
+        image_url: p.image_url || null,
+        cm_score: p.cm_artist_score || null,
+        career_stage: career?.stage || null,
+        primary_genre: p.artist_genres?.[0]?.name || null,
+        spotify_followers: p.sp_followers || null,
+        spotify_monthly_listeners: p.sp_monthly_listeners || null,
+        instagram_followers: p.ins_followers || null,
+        youtube_subscribers: p.ycs_subscribers || null,
+        tiktok_followers: p.tiktok_followers || null,
+        audience_male_pct: p.sp_fans_male_pct || null,
+        audience_female_pct: p.sp_fans_female_pct || null,
+        spotify_artist_id: spotifyId,
+        source: 'monday',
+        discovery_status: 'pipeline',
+        is_active: true,
+        cm_last_refreshed_at: new Date().toISOString(),
+      }
+
+      // Add demographics if available
+      if (demo?.ages) {
+        const ages = demo.ages
+        artistData.age_13_17_pct = ages['13-17'] ?? null
+        artistData.age_18_24_pct = ages['18-24'] ?? null
+        artistData.age_25_34_pct = ages['25-34'] ?? null
+        artistData.age_35_44_pct = ages['35-44'] ?? null
+        artistData.age_45_64_pct = ages['45-64'] ?? null
+        artistData.age_65_plus_pct = ages['65+'] ?? null
+      }
+
+      await supabase.from('intel_artists').insert(artistData)
+
+      // Insert brand affinities
+      if (brands.length) {
+        await supabase.from('intel_artist_brand_affinities').insert(
+          brands.map((b: any) => ({
+            chartmetric_id: cmId,
+            brand_id: b.id || 0,
+            brand_name: b.name,
+            affinity_scale: b.affinity,
+            follower_count: b.followers || null,
+            interest_category: b.category || null,
+          }))
+        )
+      }
+
+      // Insert sector affinities
+      if (sectors.length) {
+        await supabase.from('intel_artist_sector_affinities').insert(
+          sectors.map((s: any) => ({
+            chartmetric_id: cmId,
+            sector_id: s.id || 0,
+            sector_name: s.name,
+            affinity_scale: s.affinity,
+          }))
+        )
+      }
+
+      enriched++
+      console.log(`Enriched: ${p.name} (CM ${cmId}) — ${brands.length} brands, ${sectors.length} sectors`)
+    } catch (err: any) {
+      console.error(`Failed to enrich CM ${item.chartmetric_id}:`, err.message)
+    }
+  }
+
+  return { enriched, cm_calls: cmCalls }
+
+}
+
 // ── Main handler ──────────────────────────────────────
+
+// GET handler for Vercel Cron
+export async function GET(request: Request) {
+  const authHeader = request.headers.get('authorization')
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  return runMondaySync()
+}
+
+// POST handler for manual triggers
 export async function POST() {
+  return runMondaySync()
+}
+
+async function runMondaySync() {
   try {
     console.log('Starting Monday sync...')
 
@@ -377,10 +577,15 @@ export async function POST() {
     const contacts = await syncContacts(deals.items)
     console.log('Contacts sync complete:', contacts)
 
+    // Enrich any new artists that don't have CM data yet
+    const enrichment = await enrichNewArtists()
+    console.log('Enrichment complete:', enrichment)
+
     return NextResponse.json({
       success: true,
       deals,
       contacts,
+      enrichment,
     })
   } catch (err: any) {
     console.error('Monday sync failed:', err)

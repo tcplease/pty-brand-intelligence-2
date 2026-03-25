@@ -3,6 +3,14 @@
     {
       "path": "/api/sync/festivals",
       "schedule": "0 11 * * 1"
+    },
+    {
+      "path": "/api/sync/monday",
+      "schedule": "3 11 * * *"
+    },
+    {
+      "path": "/api/sync/monday",
+      "schedule": "7 19 * * *"
     }
   ]
 }
