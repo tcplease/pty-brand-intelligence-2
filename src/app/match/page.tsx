@@ -276,7 +276,7 @@ export default function BrandSearchPage() {
       if (selectedAges.length > 0) params.set('ages', selectedAges.join(','))
       params.set('threshold', String(threshold))
 
-      const res = await fetch(`/api/match?${params}`)
+      const res = await fetch(`/api/brand-search?${params}`)
       const data = await res.json()
       setResults(data.artists || [])
     } catch (err) {
