@@ -1,30 +1,27 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 
 export default function LoginPage() {
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const router = useRouter()
+  const [error, setError] = useState('')
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleGoogleLogin() {
     setLoading(true)
     setError('')
 
-    const res = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
+    const supabase = createSupabaseBrowserClient()
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
     })
 
-    if (res.ok) {
-      router.push('/')
-      router.refresh()
-    } else {
-      setError('Wrong password')
+    if (error) {
+      setError('Sign in failed. Please try again.')
       setLoading(false)
     }
   }
@@ -37,24 +34,17 @@ export default function LoginPage() {
           alt="Please & Thank You"
           className="w-48 mx-auto mb-8"
         />
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoFocus
-            className="w-full px-4 py-3 bg-[#2A2A2A] text-white rounded border border-[#345D83] focus:outline-none focus:border-[#F9D40A]"
-          />
-          {error && <p className="text-[#C3202E] text-sm">{error}</p>}
-          <button
-            type="submit"
-            disabled={loading || !password}
-            className="w-full py-3 bg-[#F9D40A] text-[#1B1B1B] font-bold rounded tracking-widest uppercase hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? 'Signing in...' : 'Enter'}
-          </button>
-        </form>
+        <p style={{ color: 'rgba(255,255,255,0.5)', textAlign: 'center', marginBottom: '24px', fontSize: '14px' }}>
+          Internal access only. Sign in with your P&TY Google account.
+        </p>
+        {error && <p className="text-[#C3202E] text-sm text-center mb-4">{error}</p>}
+        <button
+          onClick={handleGoogleLogin}
+          disabled={loading}
+          className="w-full py-3 bg-[#F9D40A] text-[#1B1B1B] font-bold rounded tracking-widest uppercase hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          {loading ? 'Redirecting...' : 'Sign in with Google'}
+        </button>
       </div>
     </div>
   )
