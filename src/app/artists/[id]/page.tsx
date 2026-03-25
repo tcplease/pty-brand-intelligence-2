@@ -627,10 +627,10 @@ Festival Appearances: ${activity.filter(a => a.event_type === 'festival_added').
   <a href="/" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>
     Pipeline
   </a>
-  <a href="/discovery" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>
+  <a href="/radar" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>
     Radar
   </a>
-  <a href="/brand-search" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>
+  <a href="/match" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>
     Match
   </a>
   {copyMsg && <span className="ml-auto text-xs font-semibold" style={{ color: GREEN }}>{copyMsg}</span>}

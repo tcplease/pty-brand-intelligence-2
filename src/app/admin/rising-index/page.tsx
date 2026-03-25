@@ -122,9 +122,9 @@ export default function RisingIndexImport() {
         <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
         <Link href="/" className="text-sm py-3 px-3 block transition-colors hover:text-white"
           style={{ color: W50, touchAction: 'manipulation' }}>Pipeline</Link>
-        <Link href="/discovery" className="text-sm py-3 px-3 block transition-colors hover:text-white"
+        <Link href="/radar" className="text-sm py-3 px-3 block transition-colors hover:text-white"
           style={{ color: W50, touchAction: 'manipulation' }}>Radar</Link>
-        <Link href="/brand-search" className="text-sm py-3 px-3 block transition-colors hover:text-white"
+        <Link href="/match" className="text-sm py-3 px-3 block transition-colors hover:text-white"
           style={{ color: W50, touchAction: 'manipulation' }}>Match</Link>
       </nav>
 

@@ -362,7 +362,7 @@ export default function DiscoveryPage() {
     const params = new URLSearchParams({ period })
     if (period === 'all') params.set('all', 'true')
 
-    fetch(`/api/discovery?${params.toString()}`)
+    fetch(`/api/radar?${params.toString()}`)
       .then(r => r.json())
       .then(data => {
         setArtists(data.artists || [])
@@ -374,7 +374,7 @@ export default function DiscoveryPage() {
   useEffect(() => { fetchArtists() }, [period])
 
   const handleDismiss = async (cmId: number) => {
-    await fetch('/api/discovery', {
+    await fetch('/api/radar', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chartmetric_id: cmId, action: 'dismiss' }),
@@ -410,8 +410,8 @@ export default function DiscoveryPage() {
         <img src="/pty-logo.svg" alt="P&TY" className="h-9 w-auto shrink-0" />
         <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
         <Link href="/" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Pipeline</Link>
-        <Link href="/discovery" className="text-sm py-3 px-3 block font-medium" style={{ color: Y, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(249,212,10,0.15)' }}>Radar</Link>
-        <Link href="/brand-search" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Match</Link>
+        <Link href="/radar" className="text-sm py-3 px-3 block font-medium" style={{ color: Y, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(249,212,10,0.15)' }}>Radar</Link>
+        <Link href="/match" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Match</Link>
       </nav>
 
       <div className="px-2 md:px-6 py-5">

@@ -187,7 +187,7 @@ export default function BrandSearchPage() {
       if (selectedAges.length > 0) params.set('ages', selectedAges.join(','))
       params.set('threshold', String(threshold))
 
-      const res = await fetch(`/api/brand-search?${params}`)
+      const res = await fetch(`/api/match?${params}`)
       const data = await res.json()
       setResults(data.artists || [])
     } catch (err) {
@@ -217,8 +217,8 @@ export default function BrandSearchPage() {
         <img src="/pty-logo.svg" alt="P&TY" className="h-9 w-auto shrink-0" />
         <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
         <a href="/" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Pipeline</a>
-        <a href="/discovery" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Radar</a>
-        <a href="/brand-search" className="text-sm font-medium" style={{ color: Y }}>Match</a>
+        <a href="/radar" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>Radar</a>
+        <a href="/match" className="text-sm font-medium" style={{ color: Y }}>Match</a>
       </nav>
 
       <div className="max-w-4xl mx-auto px-5 py-8">
