@@ -101,10 +101,12 @@ function getMomentumColor(score: number | null): string {
 }
 
 // ── Artist Card (matches Pipeline/Radar) ──────────────
-function MatchArtistCard({ artist, query, onClick }: {
+function MatchArtistCard({ artist, query, onClick, selected, onToggleSelect }: {
   artist: Artist
   query: { brand: string; gender: string; ages: string[] }
   onClick: () => void
+  selected: boolean
+  onToggleSelect: (e: React.MouseEvent) => void
 }) {
   const score = artist.cm_score ? Math.round(Number(artist.cm_score)) : null
   const careerColor = CAREER_COLORS[artist.career_stage?.toLowerCase() ?? ''] ?? W50
@@ -116,7 +118,7 @@ function MatchArtistCard({ artist, query, onClick }: {
 
   return (
     <div onClick={onClick} className="block h-full cursor-pointer" style={{ color: '#f5f4f2' }}>
-      <div className="flex flex-col h-full" style={{ backgroundColor: SURFACE, borderRadius: '8px', overflow: 'hidden', border: `1px solid ${BORDER}` }}>
+      <div className="flex flex-col h-full" style={{ backgroundColor: SURFACE, borderRadius: '8px', overflow: 'hidden', border: selected ? `2px solid ${Y}` : `1px solid ${BORDER}` }}>
         {/* Image */}
         <div className="relative shrink-0 aspect-square md:aspect-auto md:h-[160px]" style={{ backgroundColor: '#2a2a2a' }}>
           {artist.image_url ? (
@@ -127,12 +129,24 @@ function MatchArtistCard({ artist, query, onClick }: {
               {artist.name[0]}
             </div>
           )}
+          {/* Select checkbox */}
+          <button
+            onClick={onToggleSelect}
+            className="absolute z-10 flex items-center justify-center transition-all"
+            style={{
+              top: '8px', left: '8px', width: '22px', height: '22px', borderRadius: '4px',
+              backgroundColor: selected ? Y : 'rgba(27,27,27,0.7)',
+              border: selected ? 'none' : '2px solid rgba(255,255,255,0.3)',
+            }}
+          >
+            {selected && <span style={{ color: BG, fontSize: '14px', fontWeight: 700, lineHeight: 1 }}>✓</span>}
+          </button>
           {score !== null && (
             <div className="absolute font-bold" style={{ top: '8px', right: '8px', backgroundColor: 'rgba(27,27,27,0.9)', color: Y, fontSize: '11px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px' }}>
               {score}
             </div>
           )}
-          <div className="absolute rounded-full" style={{ top: '10px', left: '8px', width: '7px', height: '7px', backgroundColor: getMomentumColor(artist.cm_score) }} />
+          <div className="absolute rounded-full" style={{ top: '10px', left: '30px', width: '7px', height: '7px', backgroundColor: getMomentumColor(artist.cm_score) }} />
 
         </div>
 
@@ -236,6 +250,64 @@ export default function BrandSearchPage() {
   // Career stage filter
   const [careerFilter, setCareerFilter] = useState<string>('All')
   const careerStages = ['All', 'Legendary', 'Superstar', 'Mainstream', 'Mid-Level', 'Developing', 'Undiscovered']
+
+  // Multi-select for pitch
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [showPitchModal, setShowPitchModal] = useState(false)
+  const [pitchPrompt, setPitchPrompt] = useState('')
+  const [pitchOutput, setPitchOutput] = useState('')
+  const [pitchLoading, setPitchLoading] = useState(false)
+  const [pitchCopied, setPitchCopied] = useState(false)
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else if (next.size < 5) next.add(id)
+      return next
+    })
+  }
+
+  const selectedArtists = results.filter(a => selectedIds.has(a.chartmetric_id))
+
+  const buildPitchContext = () => {
+    const lines = [`Brand/Sector: ${brandQuery}`, '']
+    for (const a of selectedArtists) {
+      lines.push(`Artist: ${a.name}`)
+      if (a.career_stage) lines.push(`  Career Stage: ${a.career_stage}`)
+      if (a.primary_genre) lines.push(`  Genre: ${a.primary_genre}`)
+      if (a.spotify_followers) lines.push(`  Spotify Followers: ${formatNum(a.spotify_followers)}`)
+      if (a.instagram_followers) lines.push(`  Instagram Followers: ${formatNum(a.instagram_followers)}`)
+      if (a.tiktok_followers) lines.push(`  TikTok Followers: ${formatNum(a.tiktok_followers)}`)
+      if (a.audience_male_pct && a.audience_female_pct) lines.push(`  Audience: ${Math.round(a.audience_female_pct)}% female, ${Math.round(a.audience_male_pct)}% male`)
+      if (a.demographic_pct > 0) lines.push(`  Demo Match: ${a.demographic_pct.toFixed(0)}%`)
+      if (a.affinity_score > 0) lines.push(`  Brand Affinity: ${a.affinity_score.toFixed(1)}x`)
+      lines.push('')
+    }
+    return lines.join('\n')
+  }
+
+  const generatePitch = async () => {
+    setPitchLoading(true)
+    setPitchOutput('')
+    setPitchCopied(false)
+    try {
+      const context = buildPitchContext()
+      const prompt = pitchPrompt || `Create a brand partnership pitch for ${brandQuery} featuring these ${selectedArtists.length} artists as a portfolio opportunity.`
+      const res = await fetch('/api/pitch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, context }),
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      setPitchOutput(data.pitch || data.text || '')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error'
+      setPitchOutput(`Error: ${message}`)
+    }
+    setPitchLoading(false)
+  }
 
   const brandInputRef = useRef<HTMLInputElement>(null)
 
@@ -526,12 +598,134 @@ export default function BrandSearchPage() {
                   artist={artist}
                   query={{ brand: brandQuery, gender, ages: selectedAges }}
                   onClick={() => router.push(`/artists/${artist.chartmetric_id}`)}
+                  selected={selectedIds.has(artist.chartmetric_id)}
+                  onToggleSelect={(e) => { e.stopPropagation(); toggleSelect(artist.chartmetric_id) }}
                 />
               ))}
             </div>
           </div>
         )}
       </div>
+
+      {/* Sticky bottom bar — shows when artists selected */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-50" style={{ backgroundColor: '#1a1a1a', borderTop: `1px solid ${BORDER}`, padding: '12px 20px' }}>
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-semibold" style={{ color: Y }}>{selectedIds.size}</span>
+              <span className="text-sm" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                artist{selectedIds.size !== 1 ? 's' : ''} selected
+                {selectedIds.size < 5 && <span style={{ color: 'rgba(255,255,255,0.3)' }}> (max 5)</span>}
+              </span>
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                className="text-xs px-2 py-1 rounded transition-colors"
+                style={{ color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.1)' }}
+              >Clear</button>
+            </div>
+            <button
+              onClick={() => { setShowPitchModal(true); setPitchPrompt(''); setPitchOutput(''); setPitchCopied(false) }}
+              className="px-5 py-2 rounded-lg text-sm font-bold transition-colors"
+              style={{ backgroundColor: Y, color: BG }}
+            >Build Pitch</button>
+          </div>
+        </div>
+      )}
+
+      {/* Pitch modal */}
+      {showPitchModal && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
+          onClick={() => setShowPitchModal(false)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-2xl mx-4 rounded-xl overflow-hidden"
+            style={{ backgroundColor: '#1C1C1C', border: `1px solid ${BORDER}`, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: `1px solid ${BORDER}` }}>
+              <div>
+                <div className="text-base font-bold" style={{ color: '#f5f4f2' }}>Brand Partnership Pitch</div>
+                <div className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                  {brandQuery} → {selectedArtists.map(a => a.name).join(', ')}
+                </div>
+              </div>
+              <button onClick={() => setShowPitchModal(false)} className="text-lg" style={{ color: 'rgba(255,255,255,0.3)' }}>✕</button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-5" style={{ gap: '16px', display: 'flex', flexDirection: 'column' }}>
+              {/* Selected artists chips */}
+              <div className="flex flex-wrap gap-2">
+                {selectedArtists.map(a => (
+                  <div key={a.chartmetric_id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: `1px solid ${BORDER}` }}>
+                    {a.image_url && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={a.image_url} alt="" className="w-5 h-5 rounded-full object-cover" />
+                    )}
+                    <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.7)' }}>{a.name}</span>
+                    {a.affinity_score > 0 && (
+                      <span className="text-xs font-mono" style={{ color: '#9c9b99' }}>{a.affinity_score.toFixed(1)}x</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Custom prompt input */}
+              <div>
+                <label className="text-xs font-medium mb-1.5 block" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                  Customize the pitch direction (optional)
+                </label>
+                <textarea
+                  value={pitchPrompt}
+                  onChange={e => setPitchPrompt(e.target.value)}
+                  placeholder={`e.g. "Focus on the Gen Z crossover between these artists and ${brandQuery}'s recent campaign"`}
+                  rows={2}
+                  className="w-full rounded-lg px-3 py-2 text-sm resize-none"
+                  style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: `1px solid ${BORDER}`, color: '#f5f4f2', outline: 'none' }}
+                />
+              </div>
+
+              {/* Generate button */}
+              {!pitchOutput && (
+                <button
+                  onClick={generatePitch}
+                  disabled={pitchLoading}
+                  className="w-full py-3 rounded-lg text-sm font-bold transition-colors"
+                  style={{ backgroundColor: pitchLoading ? '#666' : Y, color: BG, cursor: pitchLoading ? 'wait' : 'pointer' }}
+                >
+                  {pitchLoading ? 'Generating...' : 'Generate Pitch'}
+                </button>
+              )}
+
+              {/* Pitch output */}
+              {pitchOutput && (
+                <div>
+                  <div className="rounded-lg p-4" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: `1px solid ${BORDER}`, whiteSpace: 'pre-wrap', fontSize: '13px', lineHeight: 1.6, color: 'rgba(255,255,255,0.85)' }}>
+                    {pitchOutput}
+                  </div>
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(pitchOutput); setPitchCopied(true); setTimeout(() => setPitchCopied(false), 2000) }}
+                      className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                      style={{ backgroundColor: pitchCopied ? GREEN : Y, color: BG }}
+                    >
+                      {pitchCopied ? '✓ Copied' : 'Copy to Clipboard'}
+                    </button>
+                    <button
+                      onClick={() => { setPitchOutput(''); setPitchCopied(false) }}
+                      className="px-4 py-2 rounded-lg text-sm transition-colors"
+                      style={{ border: `1px solid ${BORDER}`, color: 'rgba(255,255,255,0.5)' }}
+                    >Regenerate</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
