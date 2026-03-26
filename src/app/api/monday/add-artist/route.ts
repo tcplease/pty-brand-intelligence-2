@@ -123,6 +123,7 @@ export async function POST(request: Request) {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${MONDAY_TOKEN}`,
+          'API-Version': '2023-10',
         },
         body: JSON.stringify({ query: mutation }),
       })
