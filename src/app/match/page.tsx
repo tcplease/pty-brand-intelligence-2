@@ -134,7 +134,7 @@ function MatchArtistCard({ artist, query, onClick, selected, onToggleSelect }: {
             onClick={onToggleSelect}
             className="absolute z-10 flex items-center justify-center transition-all"
             style={{
-              top: '8px', left: '8px', width: '22px', height: '22px', borderRadius: '4px',
+              bottom: '8px', right: '8px', width: '22px', height: '22px', borderRadius: '4px',
               backgroundColor: selected ? Y : 'rgba(27,27,27,0.7)',
               border: selected ? 'none' : '2px solid rgba(255,255,255,0.3)',
             }}
@@ -146,7 +146,7 @@ function MatchArtistCard({ artist, query, onClick, selected, onToggleSelect }: {
               {score}
             </div>
           )}
-          <div className="absolute rounded-full" style={{ top: '10px', left: '30px', width: '7px', height: '7px', backgroundColor: getMomentumColor(artist.cm_score) }} />
+          <div className="absolute rounded-full" style={{ top: '10px', left: '8px', width: '7px', height: '7px', backgroundColor: getMomentumColor(artist.cm_score) }} />
 
         </div>
 
