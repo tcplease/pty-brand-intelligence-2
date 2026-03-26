@@ -252,6 +252,17 @@ export default function BrandSearchPage() {
   const [careerFilter, setCareerFilter] = useState<string>('All')
   const careerStages = ['All', 'Legendary', 'Superstar', 'Mainstream', 'Mid-Level', 'Developing', 'Undiscovered']
 
+  // Deal stage filter (multi-select)
+  const [selectedDealStages, setSelectedDealStages] = useState<Set<string>>(new Set())
+  const toggleDealStage = (stage: string) => {
+    setSelectedDealStages(prev => {
+      const next = new Set(prev)
+      if (next.has(stage)) next.delete(stage)
+      else next.add(stage)
+      return next
+    })
+  }
+
   // Multi-select for pitch
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [showPitchModal, setShowPitchModal] = useState(false)
@@ -373,10 +384,13 @@ export default function BrandSearchPage() {
     setCareerFilter('All')
   }
 
-  // Filter results by career stage client-side
-  const filteredResults = careerFilter === 'All'
-    ? results
-    : results.filter(a => a.career_stage?.toLowerCase() === careerFilter.toLowerCase())
+  // Filter results by career stage and deal stage client-side
+  const availableDealStages = Array.from(new Set(results.map(a => a.deal_stage).filter(Boolean) as string[]))
+  const filteredResults = results.filter(a => {
+    if (careerFilter !== 'All' && a.career_stage?.toLowerCase() !== careerFilter.toLowerCase()) return false
+    if (selectedDealStages.size > 0 && (!a.deal_stage || !selectedDealStages.has(a.deal_stage))) return false
+    return true
+  })
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: BG, color: '#f5f4f2' }}>
@@ -581,6 +595,36 @@ export default function BrandSearchPage() {
                   >{stage}</button>
                 ))}
               </div>
+
+              {/* Deal stage filter chips (multi-select) */}
+              {availableDealStages.length > 0 && (
+                <div className="flex items-center gap-2 overflow-x-auto">
+                  <span className="text-xs shrink-0" style={{ color: W30 }}>Stage:</span>
+                  {availableDealStages.map(stage => {
+                    const active = selectedDealStages.has(stage)
+                    const color = STAGE_COLORS[stage] ?? W50
+                    return (
+                      <button
+                        key={stage}
+                        onClick={() => toggleDealStage(stage)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap active:opacity-70"
+                        style={{
+                          background: active ? `${color}22` : 'transparent',
+                          borderColor: active ? color : BORDER,
+                          color: active ? color : W50,
+                        }}
+                      >{STAGE_SHORT_LABELS[stage] ?? stage}</button>
+                    )
+                  })}
+                  {selectedDealStages.size > 0 && (
+                    <button
+                      onClick={() => setSelectedDealStages(new Set())}
+                      className="text-xs px-2 py-1 rounded transition-colors"
+                      style={{ color: W30 }}
+                    >Clear</button>
+                  )}
+                </div>
+              )}
 
               {/* Legend */}
               <div className="flex items-center gap-4 text-xs" style={{ color: W30 }}>
