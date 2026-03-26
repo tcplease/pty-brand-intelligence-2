@@ -575,7 +575,8 @@ export default function BrandSearchPage() {
         {!loading && results.length > 0 && (
           <div>
             {/* Results header */}
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+            <div className="mb-4 space-y-2">
+            <div className="flex items-center justify-between">
               <div className="text-sm font-semibold" style={{ color: W50 }}>
                 {filteredResults.length} ARTIST{filteredResults.length !== 1 ? 'S' : ''}
               </div>
@@ -598,7 +599,7 @@ export default function BrandSearchPage() {
 
               {/* Deal stage filter chips (multi-select) */}
               {availableDealStages.length > 0 && (
-                <div className="flex items-center gap-2 overflow-x-auto">
+                <div className="flex items-center gap-2 overflow-x-auto flex-nowrap">
                   <span className="text-xs shrink-0" style={{ color: W30 }}>Stage:</span>
                   {availableDealStages.map(stage => {
                     const active = selectedDealStages.has(stage)
@@ -633,6 +634,7 @@ export default function BrandSearchPage() {
                 )}
                 {brandQuery && <span style={{ color: '#9c9b99' }}>● Brand affinity</span>}
               </div>
+            </div>
             </div>
 
             {/* Card grid — matches Pipeline/Radar */}
