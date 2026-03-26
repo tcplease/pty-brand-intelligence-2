@@ -122,4 +122,39 @@ Optional:
 
 ---
 
+## Spotify API Endpoints (separate from Chartmetric)
+
+### Authentication
+```
+POST https://accounts.spotify.com/api/token
+Body: grant_type=client_credentials
+Headers: Authorization: Basic base64(CLIENT_ID:CLIENT_SECRET)
+Returns: { "access_token": "...", "token_type": "Bearer" }
+```
+
+### Get Artist Albums (for pre-save detection)
+```
+GET https://api.spotify.com/v1/artists/{spotify_artist_id}/albums?include_groups=album,single&limit=5
+```
+**Returns:** Array of albums with `name`, `release_date`, `album_type`
+**Pre-save logic:** If `release_date` is in the future, the album is a pre-save/upcoming release.
+**Rate limit:** Free tier, ~180 requests/minute. Sufficient for our roster size.
+
+---
+
+## Monday.com API
+
+See `docs/monday-data-reference.md` for full board/column mapping.
+
+### Key endpoints used:
+```
+POST https://api.monday.com/v2  (GraphQL)
+```
+- **Read deals:** Query board 2696356409 with column_values
+- **Read CRM contacts:** Query board 2696356486 via linked item IDs
+- **Create deal item:** `create_item` mutation on board 2696356409
+- **Auth:** `Authorization: {MONDAY_API_TOKEN}` header (no Bearer prefix)
+
+---
+
 *P&TY Internal — Do not share externally*

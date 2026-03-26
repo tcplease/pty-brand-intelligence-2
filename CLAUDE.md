@@ -438,10 +438,27 @@ When working on a feature, confirm which phase it belongs to before building. Do
 At the start of each Claude Code session:
 1. Run `git status` — confirm clean working tree before making changes
 2. Run `git pull` — ensure you're on latest
-3. Ask Tim what specific task(s) to work on this session
-4. Check which Phase the task belongs to — don't scope-creep into future phases
-5. Confirm any open items above that might affect the task before starting
+3. **Read `docs/chartmetric-api-reference.md`** — refresh on correct endpoints and field names before touching any sync code
+4. **Read `docs/monday-data-reference.md`** — refresh on board IDs and column mappings before touching Monday sync
+5. **Review "Things You Must Never Do" and "Data Flow Architecture" sections above** — especially rules 1-3 on data protection
+6. Ask Tim what specific task(s) to work on this session
+7. Check which Phase the task belongs to — don't scope-creep into future phases
+8. Confirm any open items above that might affect the task before starting
+9. **Before any API call or database write:** state what you're about to do, how many calls it will cost, and wait for Tim's OK
 
 ---
 
-*Last updated: March 2026 — Tim (P&TY)*
+## Reference Documents
+
+| Document | Location | Covers |
+|----------|----------|--------|
+| CLAUDE.md | `/CLAUDE.md` | Architecture, design system, coding standards, data protection rules |
+| Chartmetric API Reference | `/docs/chartmetric-api-reference.md` | All CM endpoints, field names, extract patterns, common mistakes |
+| Monday Data Reference | `/docs/monday-data-reference.md` | Board IDs, column mappings, contact sync logic, stage visibility |
+| Pitch Email Playbook | Claude Project files | Tone, structure, hard rules for AI pitch generation |
+
+**ALWAYS check these docs before writing sync code or API integration code. Never guess at endpoint URLs or field names.**
+
+---
+
+*Last updated: March 26, 2026 — Tim (P&TY)*
