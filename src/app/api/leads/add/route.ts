@@ -201,6 +201,30 @@ async function handleImport(body: { leads: ParsedLead[]; source: string; submitt
       }
     } catch { /* skip */ }
 
+    // Social stats from /stat/ endpoints (profile does NOT return these)
+    const socialStats: Record<string, number | null> = {
+      spotify_followers: null,
+      spotify_monthly_listeners: null,
+      instagram_followers: null,
+      youtube_subscribers: null,
+      tiktok_followers: null,
+    }
+    const statEndpoints = [
+      { path: `stat/spotify`, extract: (d: any) => { socialStats.spotify_followers = d?.obj?.followers?.[0]?.value ?? null; socialStats.spotify_monthly_listeners = d?.obj?.monthly_listeners?.[0]?.value ?? null } },
+      { path: `stat/instagram`, extract: (d: any) => { socialStats.instagram_followers = d?.obj?.followers?.[0]?.value ?? null } },
+      { path: `stat/youtube_channel`, extract: (d: any) => { socialStats.youtube_subscribers = d?.obj?.subscribers?.[0]?.value ?? null } },
+      { path: `stat/tiktok`, extract: (d: any) => { socialStats.tiktok_followers = d?.obj?.followers?.[0]?.value ?? null } },
+    ]
+    for (const ep of statEndpoints) {
+      try {
+        await sleep(400)
+        const statRes = await fetch(`${CM_BASE}/artist/${cmId}/${ep.path}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (statRes.ok) ep.extract(await statRes.json())
+      } catch { /* skip */ }
+    }
+
     // Insert artist
     const p = profile as any
     const { error } = await supabase.from('intel_artists').insert({
@@ -210,11 +234,7 @@ async function handleImport(body: { leads: ParsedLead[]; source: string; submitt
       cm_score: p.cm_artist_score || null,
       career_stage: careerStage,
       primary_genre: p.artist_genres?.[0]?.name || null,
-      spotify_followers: p.sp_followers || null,
-      spotify_monthly_listeners: p.sp_monthly_listeners || null,
-      instagram_followers: p.ins_followers || null,
-      youtube_subscribers: p.ycs_subscribers || null,
-      tiktok_followers: p.tiktok_followers || null,
+      ...socialStats,
       audience_male_pct: p.sp_fans_male_pct || null,
       audience_female_pct: p.sp_fans_female_pct || null,
       spotify_artist_id: spotifyId,
