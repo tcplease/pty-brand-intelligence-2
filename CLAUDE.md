@@ -370,16 +370,19 @@ Strategies:
 
 ## Things You Must Never Do
 
-1. **Never write back to Monday.com** — read only until v2.1 is explicitly scoped
-2. **Never add a user-facing "Refresh Chartmetric" button** — data refresh is admin/cron only
-3. **Never include projected gross revenue in pitch output** — enforced in the Claude prompt
-4. **Never claim a brand has no live music partner in pitch output** — enforced in the Claude prompt
-5. **Never expose API keys in client-side code** — all external API calls go through Next.js API routes
-6. **Never use `select('*')` on wide Supabase tables** — always specify columns
-7. **Never show Lost-stage artists** — filter them out at the API level, not just the UI
-8. **Never use `any` in TypeScript without a justifying comment**
-9. **Never use raw `<img>` tags** — always `next/image`
-10. **Never break the Monday.com board schema** — we only read, and `chartmetric_id` stays in Supabase
+1. **Never overwrite existing Chartmetric data without explicit permission** — When updating artist records, ONLY write to fields that are currently NULL. Never overwrite a non-null value with a new value unless Tim has explicitly approved the overwrite in the current session. This applies to all fields: socials, scores, demographics, genres, images. Use `UPDATE ... SET field = value WHERE field IS NULL` patterns or check existing values before writing.
+2. **Never run batch CM API calls without testing on 1-3 artists first** — Always test with a small sample, show Tim the results, get approval, then run the batch. Never run a full sync across all artists without explicit go-ahead.
+3. **Never run batch CM API calls that overwrite existing data** — Batch operations should only INSERT new records or UPDATE null fields. If a batch needs to refresh existing data, get Tim's explicit approval first.
+4. **Never write back to Monday.com without explicit permission** — Monday write-back is now enabled but each new write pattern must be approved by Tim before running
+5. **Never add a user-facing "Refresh Chartmetric" button** — data refresh is admin/cron only
+6. **Never include projected gross revenue in pitch output** — enforced in the Claude prompt
+7. **Never claim a brand has no live music partner in pitch output** — enforced in the Claude prompt
+8. **Never expose API keys in client-side code** — all external API calls go through Next.js API routes
+9. **Never use `select('*')` on wide Supabase tables** — always specify columns
+10. **Never show Lost-stage artists** — filter them out at the API level, not just the UI
+11. **Never use `any` in TypeScript without a justifying comment**
+12. **Never use raw `<img>` tags** — always `next/image`
+13. **Never break the Monday.com board schema** — `chartmetric_id` stays in Supabase
 
 ---
 
