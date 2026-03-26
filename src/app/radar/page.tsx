@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import HelpOverlay from '@/components/ui/HelpOverlay'
 
 // ── Brand colors ──────────────────────────────────────
 const Y = '#F9D40A'
@@ -412,6 +413,7 @@ export default function DiscoveryPage() {
         <Link href="/" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Pipeline</Link>
         <Link href="/radar" className="text-sm py-3 px-3 block font-medium" style={{ color: Y, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(249,212,10,0.15)' }}>Radar</Link>
         <Link href="/match" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Match</Link>
+        <div className="ml-auto"><HelpOverlay page="radar" /></div>
       </nav>
 
       <div className="px-2 md:px-6 py-5">

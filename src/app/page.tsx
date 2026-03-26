@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { STAGE_ORDER } from '@/types'
+import HelpOverlay from '@/components/ui/HelpOverlay'
 
 interface Artist {
   chartmetric_id: number
@@ -296,6 +297,8 @@ export default function RosterPage() {
           </button>
         )}
 
+        <div className="ml-auto md:hidden"><HelpOverlay page="pipeline" /></div>
+
         {/* Desktop filters */}
         <div className="hidden md:flex items-center gap-3 ml-auto">
           <div className="relative">
@@ -339,6 +342,7 @@ export default function RosterPage() {
               </button>
             </div>
           )}
+          <HelpOverlay page="pipeline" />
         </div>
       </nav>
 

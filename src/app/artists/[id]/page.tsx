@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
+import HelpOverlay from '@/components/ui/HelpOverlay'
 
 // ── Animation hooks ──────────────────────────────────
 function useAnimateOnMount(duration = 600, delay = 0): number {
@@ -634,6 +635,7 @@ Festival Appearances: ${activity.filter(a => a.event_type === 'festival_added').
     Match
   </a>
   {copyMsg && <span className="ml-auto text-xs font-semibold" style={{ color: GREEN }}>{copyMsg}</span>}
+  <div className={copyMsg ? '' : 'ml-auto'}><HelpOverlay page="artist" /></div>
 </nav>
 
       <div className="px-5 py-6 max-w-5xl mx-auto">
