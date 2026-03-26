@@ -383,6 +383,54 @@ async function getCMToken(): Promise<string> {
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)) }
 
+// ── Step 2.5: Auto-link unlinked Monday items to existing artists ──
+async function autoLinkByName() {
+  const serviceClient = createServiceClient()
+
+  // Get all unlinked Monday items
+  const { data: unlinked } = await serviceClient
+    .from('intel_monday_items')
+    .select('monday_item_id, artist_name')
+    .is('chartmetric_id', null)
+
+  if (!unlinked?.length) return { linked: 0 }
+
+  // Get all artist names from intel_artists for matching
+  const { data: artists } = await serviceClient
+    .from('intel_artists')
+    .select('chartmetric_id, name')
+
+  if (!artists?.length) return { linked: 0 }
+
+  // Build case-insensitive lookup map
+  const nameToCmId = new Map<string, number>()
+  for (const a of artists) {
+    nameToCmId.set(a.name.toLowerCase().trim(), a.chartmetric_id)
+  }
+
+  let linked = 0
+  for (const item of unlinked) {
+    const cmId = nameToCmId.get(item.artist_name.toLowerCase().trim())
+    if (cmId) {
+      await serviceClient
+        .from('intel_monday_items')
+        .update({ chartmetric_id: cmId })
+        .eq('monday_item_id', item.monday_item_id)
+
+      // Ensure the artist is marked as pipeline
+      await serviceClient
+        .from('intel_artists')
+        .update({ discovery_status: 'pipeline', source: 'both' })
+        .eq('chartmetric_id', cmId)
+
+      linked++
+    }
+  }
+
+  console.log(`Auto-linked ${linked} Monday items by name match`)
+  return { linked }
+}
+
 async function enrichNewArtists() {
   // Find Monday items with chartmetric_id that don't have a matching intel_artists record
   const { data: mondayItems } = await supabase
@@ -574,6 +622,10 @@ async function runMondaySync() {
     const deals = await syncDeals()
     console.log('Deals sync complete:', { total: deals.total, upserted: deals.upserted })
 
+    // Auto-link unlinked Monday items to existing intel_artists by name (case-insensitive)
+    const autoLinked = await autoLinkByName()
+    console.log('Auto-link complete:', autoLinked)
+
     const contacts = await syncContacts(deals.items)
     console.log('Contacts sync complete:', contacts)
 
@@ -584,6 +636,7 @@ async function runMondaySync() {
     return NextResponse.json({
       success: true,
       deals,
+      autoLinked,
       contacts,
       enrichment,
     })
