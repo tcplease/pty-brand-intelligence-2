@@ -104,12 +104,10 @@ export async function POST(request: Request) {
       })
     } else {
       // Real Monday write
+      // Sales lead left blank per Brice — team assigns manually in Monday
       const columnValues = JSON.stringify({
         status: { label: 'Outbound - No Contact' },
         priority: { label: 'Medium' },
-        ...(appUser.monday_person_id ? {
-          person: { personsAndTeams: [{ id: appUser.monday_person_id, kind: 'person' }] }
-        } : {}),
       })
 
       const mutation = `mutation {
@@ -148,7 +146,7 @@ export async function POST(request: Request) {
       artist_name: artist.name,
       chartmetric_id: chartmetric_id,
       stage: 'Outbound - No Contact',
-      sales_lead: appUser.monday_person_name || appUser.name,
+      sales_lead: null,
       priority: 'Medium',
     })
 
