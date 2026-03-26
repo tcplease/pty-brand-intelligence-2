@@ -147,15 +147,27 @@ function getAgePct(ageGender: any[], ageCode: string): number {
 export async function POST(request: Request) {
   try {
     // Optional: pass ?limit=10 to sync a smaller batch for testing
+    // Pass ?ids=123,456 to sync specific artists
+    // Pass ?force=true to re-sync artists that already have cm_last_refreshed_at
+    // Pass ?nullsocials=true to only sync artists missing social data
     const url = new URL(request.url)
     const limit = parseInt(url.searchParams.get('limit') || '999')
+    const idsParam = url.searchParams.get('ids')
+    const force = url.searchParams.get('force') === 'true'
+    const nullSocials = url.searchParams.get('nullsocials') === 'true'
 
-    // Get artists that haven't been refreshed yet
-    const { data: artists, error: fetchError } = await supabase
-      .from('intel_artists')
-      .select('chartmetric_id, name')
-      .is('cm_last_refreshed_at', null)
-      .limit(limit)
+    let query = supabase.from('intel_artists').select('chartmetric_id, name')
+
+    if (idsParam) {
+      const ids = idsParam.split(',').map(Number).filter(n => !isNaN(n))
+      query = query.in('chartmetric_id', ids)
+    } else if (nullSocials) {
+      query = query.is('spotify_followers', null)
+    } else if (!force) {
+      query = query.is('cm_last_refreshed_at', null)
+    }
+
+    const { data: artists, error: fetchError } = await query.limit(limit)
 
     if (fetchError) throw new Error(fetchError.message)
     if (!artists?.length) {

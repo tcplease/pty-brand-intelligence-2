@@ -386,6 +386,30 @@ Strategies:
 
 ---
 
+## Data Flow Architecture — CM Pull Rules
+
+CM data is expensive and rarely changes. Follow these rules strictly:
+
+### When CM data is pulled
+- **Once per artist, at creation time.** When an artist enters the system (via Monday sync, festival discovery, Add Leads, or Add to Pipeline), run the full 8-call enrichment immediately. After that, the data is static.
+- **Never re-pull for existing artists** unless Tim explicitly requests a refresh for specific artists.
+- **The daily Monday cron** syncs deals and contacts only. Zero CM calls for artists already in `intel_artists`. CM calls only for genuinely new artists (no `chartmetric_id` linked yet).
+- **The weekly festival cron** enriches new discoveries only. Skips artists already in `intel_artists`.
+
+### How to prevent accidental overwrites
+- **Always use `/api/sync/chartmetric`** for CM data writes. It has null-strip protection built in. Never write ad-hoc scripts that UPDATE `intel_artists` directly.
+- **Any new sync endpoint** must include the null-strip pattern: strip null/undefined values before writing so existing data is never overwritten.
+- **Never write ad-hoc batch scripts** that bypass the sync route. If a one-off fix is needed, use the sync route with `?ids=` parameter.
+- **Database trigger** protects social/demographic fields from being overwritten when existing value is not null.
+
+### Cost awareness
+- Full enrichment = 8 CM calls per artist (profile, career, 4x social stats, brands, sectors)
+- Festival lineup query = 1 call per festival
+- Monday sync = 0 CM calls (Monday API only) unless new artists found
+- Budget: ~30-40 CM calls/week for festival monitoring, ~5-30 for new Monday artists
+
+---
+
 ## Phasing Reference
 
 | Phase | Status | Scope |
