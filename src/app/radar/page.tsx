@@ -531,8 +531,9 @@ export default function DiscoveryPage() {
                       }, 2000)
                       return true
                     }
+                    console.error('Add to Pipeline failed:', data.error, data.details)
                     return false
-                  } catch { return false }
+                  } catch (err) { console.error('Add to Pipeline error:', err); return false }
                 }}
               />
             ))}
