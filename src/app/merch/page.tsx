@@ -42,6 +42,28 @@ interface MerchEvaluation {
   factors: { type: 'positive' | 'negative' | 'neutral'; text: string }[]
 }
 
+interface VipSellthroughRow {
+  label: string
+  sellthrough: number
+  gross: number
+  netToSplit: number
+  ptyShare: number
+  artistShare: number
+  vsFront: number
+}
+
+interface VipEvaluation {
+  risk: 'low' | 'moderate' | 'high' | 'pass'
+  cmScore: number
+  tier: string
+  totalPackages: number
+  breakEvenSellthrough: number | null // null if impossible
+  recommendedMaxFront: number
+  rows: VipSellthroughRow[]
+  summary: string
+  factors: { type: 'positive' | 'negative' | 'neutral'; text: string }[]
+}
+
 function formatNum(n: number | null | undefined): string {
   if (!n) return '—'
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
@@ -63,6 +85,159 @@ interface BenchmarkData {
   } | null
   bandSummary: Record<string, { count: number; avgRevenue: number; avgOrders: number }>
   vipToMerchRatios: { artist: string; vipRevenue: number; monthlyMerch: number; ratio: number }[]
+}
+
+// ── VIP Merch Evaluation ──────────────────────────────
+function computeVipRow(
+  sellthrough: number,
+  totalPackages: number,
+  avgLiftPrice: number,
+  merchCOGS: number,
+  numShows: number,
+  label: string,
+  frontAmount: number,
+): VipSellthroughRow {
+  const grossAtSellthrough = totalPackages * sellthrough * avgLiftPrice
+  const ticketingFees = grossAtSellthrough * 0.10
+  const adminFees = grossAtSellthrough * 0.03
+  const grossAfterFees = grossAtSellthrough - ticketingFees - adminFees
+  const variableCosts = totalPackages * sellthrough * merchCOGS * 1.15
+  const fixedCosts = numShows * 1500
+  const netToSplit = grossAfterFees - variableCosts - fixedCosts
+  const ptyShare = netToSplit * 0.10
+  const artistShare = netToSplit - ptyShare
+  return {
+    label,
+    sellthrough,
+    gross: Math.round(grossAtSellthrough),
+    netToSplit: Math.round(netToSplit),
+    ptyShare: Math.round(ptyShare),
+    artistShare: Math.round(artistShare),
+    vsFront: Math.round(artistShare - frontAmount),
+  }
+}
+
+function evaluateVipMerch(
+  artist: ArtistResult,
+  frontAmount: number,
+  numShows: number,
+  packagesPerShow: number,
+  avgLiftPrice: number,
+  merchCOGS: number,
+  benchmarks: BenchmarkData | null,
+): VipEvaluation {
+  const cm = artist.cm_score ? Math.round(Number(artist.cm_score)) : 30
+  const totalPackages = numShows * packagesPerShow
+  const bench = benchmarks?.artistBenchmark
+  const totalVipOrders = (bench?.tm_total_orders ?? 0) + (bench?.axs_total_orders ?? 0)
+  const totalVipRevenue = (bench?.tm_total_revenue ?? 0) + (bench?.axs_total_revenue ?? 0)
+  const hasVipData = totalVipOrders > 0
+
+  // Compute rows at 4 sellthrough rates
+  const sellthroughRates = [
+    { rate: 0.50, label: 'CONSERVATIVE' },
+    { rate: 0.75, label: 'BASE CASE' },
+    { rate: 0.90, label: 'STRONG' },
+    { rate: 1.00, label: 'FULL' },
+  ]
+  const rows = sellthroughRates.map(s =>
+    computeVipRow(s.rate, totalPackages, avgLiftPrice, merchCOGS, numShows, s.label, frontAmount)
+  )
+
+  // Find break-even sellthrough (binary search for artistShare >= frontAmount)
+  let breakEvenSellthrough: number | null = null
+  // Check if even 100% covers it
+  const fullRow = computeVipRow(1.0, totalPackages, avgLiftPrice, merchCOGS, numShows, '', frontAmount)
+  if (fullRow.artistShare >= frontAmount) {
+    // Binary search between 0% and 100%
+    let lo = 0, hi = 1.0
+    for (let i = 0; i < 50; i++) {
+      const mid = (lo + hi) / 2
+      const testRow = computeVipRow(mid, totalPackages, avgLiftPrice, merchCOGS, numShows, '', frontAmount)
+      if (testRow.artistShare >= frontAmount) {
+        hi = mid
+      } else {
+        lo = mid
+      }
+    }
+    breakEvenSellthrough = Math.round(hi * 1000) / 10 // one decimal place percentage
+  }
+
+  // Risk assessment
+  let risk: VipEvaluation['risk']
+  if (breakEvenSellthrough === null || breakEvenSellthrough > 95) {
+    risk = 'pass'
+  } else if (breakEvenSellthrough > 80) {
+    risk = 'high'
+  } else if (breakEvenSellthrough > 60) {
+    risk = 'moderate'
+  } else {
+    // break-even at <= 60%, but also check for VIP benchmark data
+    risk = hasVipData ? 'low' : 'moderate'
+  }
+
+  // Recommended max front = artist share at 75% sellthrough * 0.8
+  const baseCaseRow = rows.find(r => r.sellthrough === 0.75)
+  const recommendedMaxFront = Math.round((baseCaseRow?.artistShare ?? 0) * 0.8)
+
+  // Summary
+  const dataConfidence = hasVipData
+    ? 'Based on actual P&TY VIP ticket sales data for this artist.'
+    : 'Estimated from inputs only. No direct VIP sales data available for this artist.'
+
+  const beSummary = breakEvenSellthrough !== null
+    ? `Break-even at ${breakEvenSellthrough.toFixed(1)}% sellthrough.`
+    : 'Break-even is not achievable even at 100% sellthrough.'
+
+  const summaries: Record<string, string> = {
+    low: `${dataConfidence} ${beSummary} Strong risk/reward profile at the proposed front amount.`,
+    moderate: `${dataConfidence} ${beSummary} Consider reducing the front or validating with a test run.`,
+    high: `${dataConfidence} ${beSummary} Front amount of $${frontAmount.toLocaleString()} requires very high sellthrough to recoup. Recommend restructuring.`,
+    pass: `${dataConfidence} ${beSummary} Recommend declining or restructuring to a zero-risk model.`,
+  }
+
+  // Key factors
+  const factors: VipEvaluation['factors'] = []
+
+  if (hasVipData) {
+    factors.push({ type: 'positive', text: `<strong>Real P&TY data:</strong> ${totalVipOrders.toLocaleString()} orders, $${Math.round(totalVipRevenue).toLocaleString()} revenue across ${(bench?.tm_event_count ?? 0) + (bench?.axs_event_count ?? 0)} events` })
+    const actualAvgOrder = totalVipOrders > 0 ? totalVipRevenue / totalVipOrders : 0
+    if (actualAvgOrder > 0) {
+      const comparison = actualAvgOrder >= avgLiftPrice
+        ? `above the proposed lift price of $${avgLiftPrice} — positive signal`
+        : `below the proposed lift price of $${avgLiftPrice} — may indicate pricing risk`
+      factors.push({ type: actualAvgOrder >= avgLiftPrice ? 'positive' : 'negative', text: `<strong>Avg order value:</strong> $${Math.round(actualAvgOrder).toLocaleString()} ${comparison}` })
+    }
+    if (totalVipRevenue > 500000) {
+      factors.push({ type: 'positive', text: `<strong>Top-tier VIP performer</strong> — revenue places this artist in the top 10% of P&TY's portfolio` })
+    }
+  } else {
+    factors.push({ type: 'neutral', text: `<strong>No P&TY VIP sales history</strong> — projections are based on inputs only, no historical validation. Recommend a test run or reduced front.` })
+  }
+
+  if (breakEvenSellthrough !== null && breakEvenSellthrough > 80) {
+    factors.push({ type: 'negative', text: `<strong>High sellthrough required</strong> — need ${breakEvenSellthrough.toFixed(1)}% sellthrough to recoup the front. Most VIP programs achieve 60-80%.` })
+  }
+
+  if (recommendedMaxFront > 0 && frontAmount > recommendedMaxFront * 1.25) {
+    factors.push({ type: 'negative', text: `<strong>Front exceeds recommended max</strong> — suggested max front is $${recommendedMaxFront.toLocaleString()} based on 75% sellthrough projections.` })
+  }
+
+  if (factors.length < 2) {
+    factors.push({ type: 'neutral', text: `<strong>Limited data</strong> — recommend a small test run to validate demand before committing full front amount.` })
+  }
+
+  return {
+    risk,
+    cmScore: cm,
+    tier: artist.career_stage ?? 'Unknown',
+    totalPackages,
+    breakEvenSellthrough,
+    recommendedMaxFront,
+    rows,
+    summary: summaries[risk],
+    factors,
+  }
 }
 
 function evaluateArtist(artist: ArtistResult, frontAmount: number, benchmarks: BenchmarkData | null): MerchEvaluation {
@@ -252,8 +427,15 @@ export default function MerchPage() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [searching, setSearching] = useState(false)
   const [evaluation, setEvaluation] = useState<MerchEvaluation | null>(null)
+  const [vipEvaluation, setVipEvaluation] = useState<VipEvaluation | null>(null)
   const [artistData, setArtistData] = useState<ArtistResult | null>(null)
   const [error, setError] = useState('')
+
+  // VIP Merch specific inputs
+  const [numShows, setNumShows] = useState('20')
+  const [packagesPerShow, setPackagesPerShow] = useState('200')
+  const [avgLiftPrice, setAvgLiftPrice] = useState('200')
+  const [merchCOGS, setMerchCOGS] = useState('40')
 
   const dealLabels: Record<string, string> = {
     'vip-merch': 'VIP Merch',
@@ -276,6 +458,7 @@ export default function MerchPage() {
     setSearching(true)
     setError('')
     setEvaluation(null)
+    setVipEvaluation(null)
 
     const front = parseInt(frontAmount.replace(/[^0-9]/g, '')) || 50000
 
@@ -314,7 +497,20 @@ export default function MerchPage() {
         }
       } catch { /* proceed without benchmarks */ }
 
-      setEvaluation(evaluateArtist(artist, front, benchmarks))
+      // Step 4: Evaluate based on deal type
+      if (dealType === 'vip-merch') {
+        setVipEvaluation(evaluateVipMerch(
+          artist,
+          front,
+          parseInt(numShows) || 20,
+          parseInt(packagesPerShow) || 200,
+          parseInt(avgLiftPrice.replace(/[^0-9]/g, '')) || 200,
+          parseInt(merchCOGS.replace(/[^0-9]/g, '')) || 40,
+          benchmarks,
+        ))
+      } else {
+        setEvaluation(evaluateArtist(artist, front, benchmarks))
+      }
     } catch {
       setError('Something went wrong. Try again.')
     }
@@ -325,6 +521,11 @@ export default function MerchPage() {
 
   const riskColors = { low: GREEN, moderate: Y, high: RED, pass: '#666' }
   const riskBg = { low: '#1a2e1a', moderate: '#2e2a1a', high: '#2e1a1a', pass: '#1a1a1a' }
+
+  // Determine if we should show "coming soon" instead of results
+  const isComingSoon = dealType === 'tour-merch' || dealType === 'collab'
+  const isVip = dealType === 'vip-merch'
+  const isEcomm = dealType === 'ecomm'
 
   return (
     <div className="min-h-screen" style={{ background: BG, fontFamily: "'Barlow', sans-serif" }}>
@@ -401,17 +602,89 @@ export default function MerchPage() {
               </div>
             </div>
           </div>
+
+          {/* VIP Merch Specific Inputs */}
+          {isVip && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-5 md:gap-6">
+              <div>
+                <label className="block mb-2.5 text-[11px] sm:text-[13px] tracking-[4px] uppercase" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: '#888' }}>
+                  Number of Shows
+                </label>
+                <input
+                  type="text"
+                  value={numShows}
+                  onChange={e => setNumShows(e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="20"
+                  className="w-full px-4 py-4 sm:px-5 sm:py-5 md:px-6 md:py-7 text-[24px] sm:text-[36px] md:text-[48px] tracking-wider rounded-md border-2 border-[#3a3a3a] focus:border-[#F9D40A] transition-colors placeholder:text-[#555] outline-none"
+                  style={{ background: SURFACE, color: '#f5f4f2', fontFamily: "'Bebas Neue', sans-serif" }}
+                />
+              </div>
+              <div>
+                <label className="block mb-2.5 text-[11px] sm:text-[13px] tracking-[4px] uppercase" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: '#888' }}>
+                  Packages / Show
+                </label>
+                <input
+                  type="text"
+                  value={packagesPerShow}
+                  onChange={e => setPackagesPerShow(e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="200"
+                  className="w-full px-4 py-4 sm:px-5 sm:py-5 md:px-6 md:py-7 text-[24px] sm:text-[36px] md:text-[48px] tracking-wider rounded-md border-2 border-[#3a3a3a] focus:border-[#F9D40A] transition-colors placeholder:text-[#555] outline-none"
+                  style={{ background: SURFACE, color: '#f5f4f2', fontFamily: "'Bebas Neue', sans-serif" }}
+                />
+              </div>
+              <div>
+                <label className="block mb-2.5 text-[11px] sm:text-[13px] tracking-[4px] uppercase" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: '#888' }}>
+                  Avg Lift Price
+                </label>
+                <input
+                  type="text"
+                  value={`$${parseInt(avgLiftPrice || '0').toLocaleString()}`}
+                  onChange={e => setAvgLiftPrice(e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="$200"
+                  className="w-full px-4 py-4 sm:px-5 sm:py-5 md:px-6 md:py-7 text-[24px] sm:text-[36px] md:text-[48px] tracking-wider rounded-md border-2 border-[#3a3a3a] focus:border-[#F9D40A] transition-colors placeholder:text-[#555] outline-none"
+                  style={{ background: SURFACE, color: '#f5f4f2', fontFamily: "'Bebas Neue', sans-serif" }}
+                />
+              </div>
+              <div>
+                <label className="block mb-2.5 text-[11px] sm:text-[13px] tracking-[4px] uppercase" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: '#888' }}>
+                  Merch COGS / Pkg
+                </label>
+                <input
+                  type="text"
+                  value={`$${parseInt(merchCOGS || '0').toLocaleString()}`}
+                  onChange={e => setMerchCOGS(e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="$40"
+                  className="w-full px-4 py-4 sm:px-5 sm:py-5 md:px-6 md:py-7 text-[24px] sm:text-[36px] md:text-[48px] tracking-wider rounded-md border-2 border-[#3a3a3a] focus:border-[#F9D40A] transition-colors placeholder:text-[#555] outline-none"
+                  style={{ background: SURFACE, color: '#f5f4f2', fontFamily: "'Bebas Neue', sans-serif" }}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Evaluate Button */}
-        <button
-          onClick={handleEvaluate}
-          disabled={searching || !artistName.trim()}
-          className="w-full py-5 sm:py-6 md:py-7 px-8 md:px-12 text-[20px] sm:text-[28px] md:text-[36px] tracking-[4px] md:tracking-[6px] rounded-md mt-2 hover:brightness-110 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all border-none cursor-pointer"
-          style={{ background: Y, color: '#1B1B1B', fontFamily: "'Bebas Neue', sans-serif" }}
-        >
-          {searching ? 'SEARCHING...' : 'EVALUATE RISK \u2192'}
-        </button>
+        {isComingSoon ? (
+          <div className="w-full py-5 sm:py-6 md:py-7 px-8 md:px-12 text-center text-[20px] sm:text-[28px] md:text-[36px] tracking-[4px] md:tracking-[6px] rounded-md mt-2" style={{ background: '#2a2a2a', color: '#666', fontFamily: "'Bebas Neue', sans-serif" }}>
+            MODEL COMING SOON
+          </div>
+        ) : (
+          <button
+            onClick={handleEvaluate}
+            disabled={searching || !artistName.trim()}
+            className="w-full py-5 sm:py-6 md:py-7 px-8 md:px-12 text-[20px] sm:text-[28px] md:text-[36px] tracking-[4px] md:tracking-[6px] rounded-md mt-2 hover:brightness-110 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all border-none cursor-pointer"
+            style={{ background: Y, color: '#1B1B1B', fontFamily: "'Bebas Neue', sans-serif" }}
+          >
+            {searching ? 'SEARCHING...' : 'EVALUATE RISK \u2192'}
+          </button>
+        )}
+
+        {isComingSoon && (
+          <div className="mt-5 md:mt-6 p-4 md:p-5 rounded-md text-sm md:text-[15px]" style={{ background: '#1a1a2e', borderLeft: `4px solid ${BLUE}`, color: '#888' }}>
+            {dealType === 'tour-merch'
+              ? 'Tour Merch model coming soon — contact the merch team for custom projections.'
+              : 'Limited Collab Drop model coming soon — contact the merch team for custom projections.'}
+          </div>
+        )}
 
         {error && (
           <div className="mt-5 md:mt-6 p-4 md:p-5 rounded-md text-sm md:text-[15px]" style={{ background: '#2e1a1a', borderLeft: `4px solid ${RED}`, color: '#f5f4f2' }}>
@@ -419,8 +692,113 @@ export default function MerchPage() {
           </div>
         )}
 
-        {/* Results */}
-        {evaluation && artistData && (
+        {/* ── VIP MERCH RESULTS ── */}
+        {isVip && vipEvaluation && artistData && (
+          <div className="animate-fade-up mt-8 md:mt-10">
+
+            {/* Artist info bar */}
+            <div className="flex flex-wrap items-center gap-3 md:gap-4 mb-6 p-3 sm:p-4 md:p-4 md:px-5 rounded-lg" style={{ background: SURFACE, border: `1px solid ${BORDER}` }}>
+              {artistData.image_url && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={artistData.image_url} alt={artistData.name} className="w-11 h-11 md:w-14 md:h-14 rounded-lg object-cover" />
+              )}
+              <div className="min-w-0">
+                <div className="text-xl md:text-[28px] tracking-[1px] truncate" style={{ fontFamily: "'Bebas Neue', sans-serif", color: '#f5f4f2' }}>
+                  {artistData.name}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 md:gap-3 text-xs md:text-[13px]" style={{ color: '#888' }}>
+                  {artistData.primary_genre && <span>{artistData.primary_genre}</span>}
+                  {artistData.career_stage && <span>• {artistData.career_stage}</span>}
+                  {artistData.spotify_followers && <span>• {formatNum(artistData.spotify_followers)} Spotify</span>}
+                </div>
+              </div>
+              <a href={`/artists/${artistData.chartmetric_id}`} className="hidden sm:block ml-auto text-sm hover:text-white transition-colors shrink-0" style={{ color: W50 }}>
+                View full profile &rarr;
+              </a>
+              <a href={`/artists/${artistData.chartmetric_id}`} className="block sm:hidden w-full text-sm hover:text-white transition-colors text-center py-2 mt-1 rounded-md" style={{ color: W50, background: '#2a2a2a' }}>
+                View full profile &rarr;
+              </a>
+            </div>
+
+            {/* Risk Banner */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 p-4 px-5 sm:p-5 sm:px-6 md:p-6 md:px-8 mb-6 md:mb-7 rounded-md" style={{ borderLeft: `6px solid ${riskColors[vipEvaluation.risk]}`, background: riskBg[vipEvaluation.risk] }}>
+              <div className="text-[32px] sm:text-[40px] md:text-[48px] tracking-[3px]" style={{ fontFamily: "'Bebas Neue', sans-serif", color: riskColors[vipEvaluation.risk] }}>
+                {vipEvaluation.risk.toUpperCase()}
+              </div>
+              <div className="text-[13px] md:text-[15px] leading-relaxed sm:text-right sm:max-w-[400px]" style={{ color: '#888' }}>
+                {vipEvaluation.summary}
+              </div>
+            </div>
+
+            {/* VIP Metric Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-7">
+              {[
+                { label: 'CM Score', value: String(vipEvaluation.cmScore), sub: vipEvaluation.tier, accent: Y },
+                { label: 'Total Packages', value: vipEvaluation.totalPackages.toLocaleString(), sub: `${numShows} shows \u00D7 ${packagesPerShow}/show`, accent: BLUE },
+                { label: 'Break-Even Sellthrough', value: vipEvaluation.breakEvenSellthrough !== null ? `${vipEvaluation.breakEvenSellthrough.toFixed(1)}%` : 'N/A', sub: vipEvaluation.breakEvenSellthrough !== null ? 'To recoup front' : 'Cannot recoup', accent: vipEvaluation.breakEvenSellthrough !== null && vipEvaluation.breakEvenSellthrough <= 75 ? GREEN : RED },
+                { label: 'Recommended Max Front', value: `$${vipEvaluation.recommendedMaxFront.toLocaleString()}`, sub: '75% sellthrough \u00D7 80%', accent: '#f5f4f2' },
+              ].map((m, i) => (
+                <div key={i} className="relative overflow-hidden p-4 md:p-6 rounded-md" style={{ background: SURFACE, border: '1px solid #333' }}>
+                  <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: m.accent }} />
+                  <div className="text-[10px] md:text-[11px] tracking-[2px] md:tracking-[3px] uppercase mb-1.5 md:mb-2" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: '#888' }}>{m.label}</div>
+                  <div className="text-[28px] sm:text-[36px] md:text-[44px] leading-none tracking-[1px]" style={{ fontFamily: "'Bebas Neue', sans-serif", color: '#f5f4f2' }}>{m.value}</div>
+                  <div className="text-[11px] md:text-[13px] mt-1 md:mt-1.5" style={{ color: '#666' }}>{m.sub}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* VIP Sellthrough Projection Table */}
+            <div className="p-5 md:p-7 rounded-md mb-6 md:mb-7 overflow-x-auto" style={{ background: SURFACE, border: '1px solid #333' }}>
+              <h3 className="text-lg md:text-xl tracking-[2px] mb-4 md:mb-5" style={{ fontFamily: "'Bebas Neue', sans-serif", color: '#f5f4f2' }}>SELLTHROUGH PROJECTIONS</h3>
+              <table className="w-full min-w-[700px]" style={{ borderCollapse: 'collapse' as const }}>
+                <thead>
+                  <tr>
+                    {['Scenario', 'Sellthrough', 'Gross', 'Net to Split', 'P&TY Share', 'Artist Share', 'vs Front'].map(h => (
+                      <th key={h} className="text-left text-[10px] md:text-[11px] tracking-[2px] md:tracking-[3px] uppercase pb-3 border-b border-[#333]" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: '#888' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {vipEvaluation.rows.map(row => {
+                    const rowColor = row.sellthrough <= 0.50 ? RED : row.sellthrough <= 0.75 ? Y : GREEN
+                    return (
+                      <tr key={row.label}>
+                        <td className="py-3 md:py-3.5 border-b border-[#2a2a2a] text-sm md:text-base tracking-[2px]" style={{ fontFamily: "'Bebas Neue', sans-serif", color: rowColor }}>{row.label}</td>
+                        <td className="py-3 md:py-3.5 border-b border-[#2a2a2a] text-base md:text-lg font-medium" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: '#f5f4f2' }}>{Math.round(row.sellthrough * 100)}%</td>
+                        <td className="py-3 md:py-3.5 border-b border-[#2a2a2a] text-base md:text-lg font-medium" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: '#f5f4f2' }}>${row.gross.toLocaleString()}</td>
+                        <td className="py-3 md:py-3.5 border-b border-[#2a2a2a] text-base md:text-lg font-medium" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: '#f5f4f2' }}>${row.netToSplit.toLocaleString()}</td>
+                        <td className="py-3 md:py-3.5 border-b border-[#2a2a2a] text-base md:text-lg font-medium" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: '#f5f4f2' }}>${row.ptyShare.toLocaleString()}</td>
+                        <td className="py-3 md:py-3.5 border-b border-[#2a2a2a] text-base md:text-lg font-medium" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: '#f5f4f2' }}>${row.artistShare.toLocaleString()}</td>
+                        <td className="py-3 md:py-3.5 border-b border-[#2a2a2a] text-base md:text-lg font-medium" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: row.vsFront >= 0 ? GREEN : RED }}>
+                          {row.vsFront >= 0 ? '+' : ''}{row.vsFront < 0 ? '-' : ''}${Math.abs(row.vsFront).toLocaleString()}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Key Factors */}
+            <div className="p-5 md:p-7 rounded-md" style={{ background: SURFACE, border: '1px solid #333' }}>
+              <h3 className="text-lg md:text-xl tracking-[2px] mb-3 md:mb-4" style={{ fontFamily: "'Bebas Neue', sans-serif", color: '#f5f4f2' }}>KEY FACTORS</h3>
+              {vipEvaluation.factors.map((f, i) => (
+                <div key={i} className="flex items-start gap-3 py-3" style={{ borderBottom: i < vipEvaluation.factors.length - 1 ? '1px solid #2a2a2a' : 'none' }}>
+                  <div className="rounded-full mt-1.5 shrink-0 w-2 h-2" style={{ background: f.type === 'positive' ? GREEN : f.type === 'negative' ? RED : Y }} />
+                  <div className="text-[13px] md:text-[14px] leading-relaxed" style={{ color: '#888' }} dangerouslySetInnerHTML={{ __html: f.text.replace(/<strong>/g, '<strong style="color:#f5f4f2;font-weight:500">') }} />
+                </div>
+              ))}
+            </div>
+
+            {/* Footer */}
+            <div className="mt-8 md:mt-10 text-[10px] md:text-[11px] tracking-[2px] uppercase" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: '#444' }}>
+              Please &amp; Thank You — Confidential — Not for external distribution
+            </div>
+          </div>
+        )}
+
+        {/* ── E-COMMERCE STORE RESULTS (original model) ── */}
+        {isEcomm && evaluation && artistData && (
           <div className="animate-fade-up mt-8 md:mt-10">
 
             {/* Artist info bar */}
