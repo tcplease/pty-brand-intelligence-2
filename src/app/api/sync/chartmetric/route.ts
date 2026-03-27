@@ -144,7 +144,7 @@ function getAgePct(ageGender: any[], ageCode: string): number {
 }
 
 // ── Main sync ─────────────────────────────────────────
-// GET handler — search CM by name without storing (used by merch page)
+// GET handler — search DB first, fall back to CM with full enrichment + storage
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url)
@@ -153,9 +153,20 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'search param required' }, { status: 400 })
     }
 
+    // Step 1: Check our DB first — zero CM calls if we already have the artist
+    const { data: existing } = await supabase
+      .from('intel_artists')
+      .select('*')
+      .ilike('name', searchQuery)
+      .limit(1)
+
+    if (existing && existing.length > 0) {
+      return NextResponse.json(existing[0])
+    }
+
+    // Step 2: Not in DB — search CM
     const token = await getCMToken()
 
-    // Search CM for artist
     const searchRes = await fetch(
       `https://api.chartmetric.com/api/search?q=${encodeURIComponent(searchQuery)}&type=artists&limit=1`,
       { headers: { Authorization: `Bearer ${token}` } }
@@ -169,22 +180,99 @@ export async function GET(request: Request) {
 
     const cmId = match.id
 
-    // Get full profile
+    // Double-check DB by CM ID (in case name didn't match exactly)
+    const { data: existingById } = await supabase
+      .from('intel_artists')
+      .select('*')
+      .eq('chartmetric_id', cmId)
+      .limit(1)
+
+    if (existingById && existingById.length > 0) {
+      return NextResponse.json(existingById[0])
+    }
+
+    // Step 3: Full CM enrichment — profile, career, socials, brands, sectors, Spotify ID
     const meta = await getArtistMeta(cmId, token)
     const career = await getCareerData(cmId, token)
-
-    // Get social stats from /stat/ endpoints
     const socialStats = await getSocialStats(cmId, token)
 
-    return NextResponse.json({
+    // Get Spotify ID from URLs
+    let spotifyArtistId: string | null = null
+    try {
+      const urlsRes = await fetch(`https://api.chartmetric.com/api/artist/${cmId}/urls`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (urlsRes.ok) {
+        const urlsData = (await urlsRes.json())?.obj || []
+        const spEntry = urlsData.find((u: any) => u.domain === 'spotify') // eslint-disable-line @typescript-eslint/no-explicit-any
+        if (spEntry?.url?.[0]) {
+          const spMatch = spEntry.url[0].match(/artist\/([a-zA-Z0-9]+)/)
+          if (spMatch) spotifyArtistId = spMatch[1]
+        }
+      }
+    } catch { /* skip */ }
+
+    const artistRecord = {
       chartmetric_id: cmId,
       name: meta?.name || match.name,
       image_url: meta?.image_url || null,
       cm_score: meta?.cm_score || null,
       career_stage: career?.stage || null,
       primary_genre: meta?.primary_genre || null,
+      spotify_artist_id: spotifyArtistId,
+      source: 'manual',
+      discovery_status: 'unlisted',
+      is_active: true,
+      cm_last_refreshed_at: new Date().toISOString(),
       ...socialStats,
-    })
+    }
+
+    // Step 4: Store in DB — INSERT only, never overwrite
+    const { error: insertErr } = await supabase.from('intel_artists').insert(artistRecord)
+    if (insertErr) console.error('Failed to store artist:', insertErr.message)
+
+    // Step 5: Pull brand + sector affinities
+    try {
+      const brandRes = await fetch(`https://api.chartmetric.com/api/artist/${cmId}/instagram-audience-data?field=brandAffinity`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (brandRes.ok) {
+        const brands = ((await brandRes.json())?.obj || []).filter((b: any) => b.affinity >= 1.0) // eslint-disable-line @typescript-eslint/no-explicit-any
+        if (brands.length) {
+          await supabase.from('intel_artist_brand_affinities').insert(
+            brands.map((b: any) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
+              chartmetric_id: cmId,
+              brand_id: b.id || 0,
+              brand_name: b.name,
+              affinity_scale: b.affinity,
+              follower_count: b.followers || null,
+              interest_category: b.category || null,
+            }))
+          )
+        }
+      }
+    } catch { /* skip */ }
+
+    try {
+      const sectorRes = await fetch(`https://api.chartmetric.com/api/artist/${cmId}/instagram-audience-data?field=interests`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (sectorRes.ok) {
+        const sectors = ((await sectorRes.json())?.obj || []).filter((s: any) => s.affinity >= 1.0) // eslint-disable-line @typescript-eslint/no-explicit-any
+        if (sectors.length) {
+          await supabase.from('intel_artist_sector_affinities').insert(
+            sectors.map((s: any) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
+              chartmetric_id: cmId,
+              sector_id: s.id || 0,
+              sector_name: s.name,
+              affinity_scale: s.affinity,
+            }))
+          )
+        }
+      }
+    } catch { /* skip */ }
+
+    return NextResponse.json(artistRecord)
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     return NextResponse.json({ error: message }, { status: 500 })
