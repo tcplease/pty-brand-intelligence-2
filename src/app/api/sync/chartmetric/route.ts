@@ -144,6 +144,53 @@ function getAgePct(ageGender: any[], ageCode: string): number {
 }
 
 // ── Main sync ─────────────────────────────────────────
+// GET handler — search CM by name without storing (used by merch page)
+export async function GET(request: Request) {
+  try {
+    const url = new URL(request.url)
+    const searchQuery = url.searchParams.get('search')
+    if (!searchQuery) {
+      return NextResponse.json({ error: 'search param required' }, { status: 400 })
+    }
+
+    const token = await getCMToken()
+
+    // Search CM for artist
+    const searchRes = await fetch(
+      `https://api.chartmetric.com/api/search?q=${encodeURIComponent(searchQuery)}&type=artists&limit=1`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    )
+    if (!searchRes.ok) throw new Error('CM search failed')
+    const searchData = await searchRes.json()
+    const match = searchData?.obj?.artists?.[0]
+    if (!match) {
+      return NextResponse.json({ error: 'Artist not found on Chartmetric' }, { status: 404 })
+    }
+
+    const cmId = match.id
+
+    // Get full profile
+    const meta = await getArtistMeta(cmId, token)
+    const career = await getCareerData(cmId, token)
+
+    // Get social stats from /stat/ endpoints
+    const socialStats = await getSocialStats(cmId, token)
+
+    return NextResponse.json({
+      chartmetric_id: cmId,
+      name: meta?.name || match.name,
+      image_url: meta?.image_url || null,
+      cm_score: meta?.cm_score || null,
+      career_stage: career?.stage || null,
+      primary_genre: meta?.primary_genre || null,
+      ...socialStats,
+    })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
 export async function POST(request: Request) {
   try {
     // Optional: pass ?limit=10 to sync a smaller batch for testing
