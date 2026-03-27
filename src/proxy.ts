@@ -54,6 +54,16 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
 
+  // Restrict to @please.co domain
+  const email = user.email || ''
+  if (!email.endsWith('@please.co')) {
+    // Sign them out and redirect to login with error
+    await supabase.auth.signOut()
+    const loginUrl = new URL('/login', request.url)
+    loginUrl.searchParams.set('error', 'unauthorized')
+    return NextResponse.redirect(loginUrl)
+  }
+
   return response
 }
 
