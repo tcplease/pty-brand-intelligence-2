@@ -163,16 +163,18 @@ function evaluateVipMerch(
     breakEvenSellthrough = Math.round(hi * 1000) / 10 // one decimal place percentage
   }
 
-  // Risk assessment
+  // Risk assessment — factors in BOTH break-even sellthrough AND front vs recommended max
+  const frontExceedsMax = recommendedMaxFront > 0 && frontAmount > recommendedMaxFront
+
   let risk: VipEvaluation['risk']
   if (breakEvenSellthrough === null || breakEvenSellthrough > 95) {
     risk = 'pass'
-  } else if (breakEvenSellthrough > 80) {
+  } else if (breakEvenSellthrough > 80 || (frontExceedsMax && breakEvenSellthrough > 50)) {
     risk = 'high'
-  } else if (breakEvenSellthrough > 60) {
+  } else if (breakEvenSellthrough > 60 || frontExceedsMax) {
     risk = 'moderate'
   } else {
-    // break-even at <= 60%, but also check for VIP benchmark data
+    // break-even at <= 60% AND front within recommended max
     risk = hasVipData ? 'low' : 'moderate'
   }
 
