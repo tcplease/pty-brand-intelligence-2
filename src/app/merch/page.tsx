@@ -163,6 +163,13 @@ function evaluateVipMerch(
     breakEvenSellthrough = Math.round(hi * 1000) / 10 // one decimal place percentage
   }
 
+  // Recommended max front: P&TY must recoup front AND make 30% margin
+  // Max front = P&TY share at 75% sellthrough / 1.30
+  // This ensures P&TY gets their money back + 30% profit at base case
+  const baseCaseRow = rows.find(r => r.sellthrough === 0.75)
+  const ptyShareAtBase = baseCaseRow?.ptyShare ?? 0
+  const recommendedMaxFront = Math.round(ptyShareAtBase / 1.30)
+
   // Risk assessment — factors in BOTH break-even sellthrough AND front vs recommended max
   const frontExceedsMax = recommendedMaxFront > 0 && frontAmount > recommendedMaxFront
 
@@ -177,13 +184,6 @@ function evaluateVipMerch(
     // break-even at <= 60% AND front within recommended max
     risk = hasVipData ? 'low' : 'moderate'
   }
-
-  // Recommended max front: P&TY must recoup front AND make 30% margin
-  // Max front = P&TY share at 75% sellthrough / 1.30
-  // This ensures P&TY gets their money back + 30% profit at base case
-  const baseCaseRow = rows.find(r => r.sellthrough === 0.75)
-  const ptyShareAtBase = baseCaseRow?.ptyShare ?? 0
-  const recommendedMaxFront = Math.round(ptyShareAtBase / 1.30)
 
   // Summary
   const dataConfidence = hasVipData
