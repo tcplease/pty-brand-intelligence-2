@@ -49,17 +49,49 @@ function formatNum(n: number | null | undefined): string {
   return String(n)
 }
 
-function evaluateArtist(artist: ArtistResult): MerchEvaluation {
+interface BenchmarkData {
+  artistBenchmark: {
+    tm_total_orders: number
+    tm_total_revenue: number
+    tm_event_count: number
+    tm_avg_order_value: number
+    axs_total_orders: number
+    axs_total_revenue: number
+    axs_event_count: number
+    axs_avg_order_value: number
+    shopify_monthly_revenue: number | null
+  } | null
+  bandSummary: Record<string, { count: number; avgRevenue: number; avgOrders: number }>
+  vipToMerchRatios: { artist: string; vipRevenue: number; monthlyMerch: number; ratio: number }[]
+}
+
+function evaluateArtist(artist: ArtistResult, frontAmount: number, benchmarks: BenchmarkData | null): MerchEvaluation {
   const cm = artist.cm_score ? Math.round(Number(artist.cm_score)) : 30
   const stage = (artist.career_stage ?? '').toLowerCase()
+  const bench = benchmarks?.artistBenchmark
+  const bands = benchmarks?.bandSummary || {}
+  const ratios = benchmarks?.vipToMerchRatios || []
 
-  // Engagement score: based on social following relative to CM score
+  // ── ENGAGEMENT SCORE ──
+  // If we have real VIP data, use it. Otherwise estimate from socials.
+  const totalVipRevenue = (bench?.tm_total_revenue ?? 0) + (bench?.axs_total_revenue ?? 0)
+  const totalVipOrders = (bench?.tm_total_orders ?? 0) + (bench?.axs_total_orders ?? 0)
+  const hasVipData = totalVipOrders > 0
+
   const totalSocial = (artist.spotify_followers ?? 0) + (artist.instagram_followers ?? 0) + (artist.tiktok_followers ?? 0)
-  const engagement = Math.min(95, Math.max(10, Math.round(
-    cm > 0 ? Math.min(95, (totalSocial / 500000) * 40 + cm * 0.5) : 20
-  )))
 
-  // Momentum: higher CM score = better, career stage matters
+  let engagement: number
+  if (hasVipData) {
+    // Real data: score based on actual VIP revenue relative to peers
+    const revenuePercentile = Math.min(95, Math.round((totalVipRevenue / 2000000) * 80 + 15))
+    engagement = revenuePercentile
+  } else {
+    engagement = Math.min(95, Math.max(10, Math.round(
+      cm > 0 ? Math.min(95, (totalSocial / 500000) * 40 + cm * 0.5) : 20
+    )))
+  }
+
+  // ── MOMENTUM SCORE ──
   const stageMultiplier: Record<string, number> = {
     'legendary': 0.6, 'superstar': 0.85, 'mainstream': 1.0,
     'mid-level': 0.9, 'developing': 0.7, 'undiscovered': 0.4,
@@ -68,77 +100,124 @@ function evaluateArtist(artist: ArtistResult): MerchEvaluation {
     cm * (stageMultiplier[stage] ?? 0.7) + (artist.spotify_monthly_listeners ? Math.min(30, artist.spotify_monthly_listeners / 1000000 * 10) : 0)
   )))
 
-  // Touring: estimate from career stage (real version would check tour dates)
-  const touringBase: Record<string, number> = {
-    'legendary': 50, 'superstar': 85, 'mainstream': 75,
-    'mid-level': 60, 'developing': 40, 'undiscovered': 15,
+  // ── TOURING SCORE ──
+  let touring: number
+  if (hasVipData) {
+    const eventCount = (bench?.tm_event_count ?? 0) + (bench?.axs_event_count ?? 0)
+    touring = Math.min(95, Math.max(10, Math.round(eventCount * 2.5 + 20)))
+  } else {
+    const touringBase: Record<string, number> = {
+      'legendary': 50, 'superstar': 85, 'mainstream': 75,
+      'mid-level': 60, 'developing': 40, 'undiscovered': 15,
+    }
+    touring = touringBase[stage] ?? 35
   }
-  const touring = touringBase[stage] ?? 35
 
-  // Catalog potential: higher for established acts with engaged fanbases
+  // ── CATALOG + PURCHASING + BRAND FIT ──
   const catalog = Math.min(90, Math.max(10, Math.round(engagement * 0.6 + (cm > 60 ? 30 : cm > 40 ? 20 : 10))))
-
-  // Fan purchasing power: combo of engagement and career stage
   const purchasing = Math.min(90, Math.max(10, Math.round(engagement * 0.5 + momentum * 0.3 + (touring > 50 ? 15 : 5))))
-
-  // Brand fit
   const brandFit = Math.min(90, Math.max(15, Math.round(cm * 0.6 + engagement * 0.2)))
 
-  // Revenue projections based on benchmarks from actual P&TY store data
-  // Low-engagement legacy acts: $200-600/mo (Salt-n-Pepa pattern)
-  // Niche/cult acts: $500-2500/mo (Morphine pattern)
-  // Active mid-tier: $1000-5000/mo (steady catalog stores)
-  // High-engagement established: $2000-8000/mo (Nick Carter pattern)
-  // One-off projects: $150-1500/mo (Kx5 pattern - spike then decay)
+  // ── REVENUE PROJECTIONS ──
+  // Priority: actual Shopify data > VIP-to-Merch ratio > CM score band estimate
   let monthlyLow: number, monthlyMid: number, monthlyHigh: number
 
-  if (engagement < 30 && momentum < 30) {
-    // Legacy/low engagement — Salt-n-Pepa pattern
-    monthlyLow = 150; monthlyMid = 500; monthlyHigh = 1200
-  } else if (cm >= 70 && engagement >= 60) {
-    // High-engagement established — Nick Carter pattern
-    monthlyLow = 2000; monthlyMid = 4500; monthlyHigh = 8500
-  } else if (cm >= 50 && touring >= 60) {
-    // Active touring mid-tier
-    monthlyLow = 1200; monthlyMid = 3000; monthlyHigh = 6000
-  } else if (engagement >= 50) {
-    // Engaged niche — Morphine pattern
-    monthlyLow = 500; monthlyMid = 1500; monthlyHigh = 3500
+  if (bench?.shopify_monthly_revenue) {
+    // Best case: we have actual merch revenue data for this artist
+    const actual = bench.shopify_monthly_revenue
+    monthlyLow = Math.round(actual * 0.6)
+    monthlyMid = Math.round(actual)
+    monthlyHigh = Math.round(actual * 1.5)
+  } else if (hasVipData && ratios.length > 0) {
+    // Second best: use VIP-to-Merch ratio from artists where we have both
+    const avgRatio = ratios.reduce((sum, r) => sum + r.ratio, 0) / ratios.length
+    const projectedMonthly = totalVipRevenue * avgRatio
+    monthlyLow = Math.round(projectedMonthly * 0.5)
+    monthlyMid = Math.round(projectedMonthly)
+    monthlyHigh = Math.round(projectedMonthly * 1.8)
+  } else if (hasVipData) {
+    // Have VIP data but no merch ratio yet — use VIP revenue as proxy
+    // Avg merch is roughly 3-5% of VIP revenue per month (rough heuristic)
+    const estimate = totalVipRevenue * 0.04 / 12
+    monthlyLow = Math.round(estimate * 0.5)
+    monthlyMid = Math.round(estimate)
+    monthlyHigh = Math.round(estimate * 2)
   } else {
-    // Default / developing
-    monthlyLow = 200; monthlyMid = 800; monthlyHigh = 2000
+    // No VIP data — fall back to CM score band averages
+    let bandKey = 'unknown'
+    if (cm >= 90) bandKey = '90+'
+    else if (cm >= 80) bandKey = '80-89'
+    else if (cm >= 70) bandKey = '70-79'
+    else if (cm >= 60) bandKey = '60-69'
+    else bandKey = '<60'
+
+    const bandAvgRev = bands[bandKey]?.avgRevenue ?? 100000
+    // Estimate merch as ~4% of VIP revenue, monthly
+    const estimate = bandAvgRev * 0.04 / 12
+    monthlyLow = Math.round(estimate * 0.5)
+    monthlyMid = Math.round(Math.max(estimate, 500))
+    monthlyHigh = Math.round(estimate * 2.5)
   }
 
-  // Risk assessment
+  // Ensure minimums
+  monthlyLow = Math.max(monthlyLow, 100)
+  monthlyMid = Math.max(monthlyMid, 300)
+  monthlyHigh = Math.max(monthlyHigh, 500)
+
+  // ── RISK ASSESSMENT — factors in the front amount ──
+  const breakEvenMonths = monthlyMid > 0 ? frontAmount / monthlyMid : 999
+
   let risk: MerchEvaluation['risk']
-  if (engagement < 25 || (cm < 40 && momentum < 25)) {
+  if (breakEvenMonths > 24 || (engagement < 25 && !hasVipData)) {
     risk = 'pass'
-  } else if (engagement < 40 || momentum < 35) {
+  } else if (breakEvenMonths > 18 || (engagement < 40 && !hasVipData)) {
     risk = 'high'
-  } else if (cm >= 60 && engagement >= 55 && touring >= 50) {
+  } else if (breakEvenMonths <= 6 && engagement >= 50) {
     risk = 'low'
+  } else if (breakEvenMonths <= 12) {
+    risk = hasVipData ? 'low' : 'moderate'
   } else {
     risk = 'moderate'
   }
 
-  // Summary
+  // ── SUMMARY ──
+  const dataConfidence = hasVipData
+    ? bench?.shopify_monthly_revenue ? 'Based on actual P&TY VIP ticket sales AND merch store data for this artist.'
+    : 'Based on actual P&TY VIP ticket sales data for this artist.'
+    : 'Estimated from CM score and comparable artist benchmarks. No direct VIP sales data available.'
+
   const summaries: Record<string, string> = {
-    low: `Strong engagement metrics with active career momentum. Fanbase demonstrates purchasing behavior consistent with successful merch programs. Comparable P&TY artist profiles sustain $${monthlyMid.toLocaleString()}/mo in steady-state revenue.`,
-    moderate: `Mixed signals — some strong indicators but risk factors present. Revenue projections carry wider variance. Recommend starting with a limited test order before committing to significant inventory.`,
-    high: `Multiple risk indicators flagged. Low engagement relative to name recognition, limited touring activity, or declining momentum. Historical P&TY data shows similar profiles underperform projections. Proceed with caution or restructure deal terms.`,
-    pass: `Engagement and momentum metrics fall below thresholds for profitable merch programs. Comparable artist profiles in P&TY data consistently generate under $800/mo. Recommend declining or limiting to zero-risk consignment model only.`,
+    low: `${dataConfidence} Break-even projected at ${Math.ceil(breakEvenMonths)} months. Strong risk/reward profile at the proposed front amount.`,
+    moderate: `${dataConfidence} Break-even projected at ${Math.ceil(breakEvenMonths)} months. Consider negotiating the front amount or starting with a limited test order.`,
+    high: `${dataConfidence} Break-even projected at ${Math.ceil(breakEvenMonths)} months. Front amount of $${frontAmount.toLocaleString()} exceeds comfortable risk threshold. Recommend restructuring deal terms.`,
+    pass: `${dataConfidence} Break-even exceeds 24 months at projected revenue. Recommend declining or limiting to zero-risk consignment model only.`,
   }
 
-  // Factors
+  // ── KEY FACTORS ──
   const factors: MerchEvaluation['factors'] = []
-  if (engagement >= 60) factors.push({ type: 'positive', text: `<strong>Strong fan engagement</strong> — social following and interaction rates suggest an active, spending-ready fanbase` })
-  if (engagement < 30) factors.push({ type: 'negative', text: `<strong>Low engagement</strong> — name recognition exceeds active fan engagement, indicating a passive audience unlikely to convert to merch sales` })
+
+  if (hasVipData) {
+    factors.push({ type: 'positive', text: `<strong>Real VIP sales data available</strong> — ${totalVipOrders.toLocaleString()} orders, $${Math.round(totalVipRevenue).toLocaleString()} total VIP revenue across ${(bench?.tm_event_count ?? 0) + (bench?.axs_event_count ?? 0)} events` })
+    if (totalVipRevenue > 500000) factors.push({ type: 'positive', text: `<strong>Top-tier VIP performer</strong> — revenue places this artist in the top 10% of P&TY's portfolio` })
+  } else {
+    factors.push({ type: 'neutral', text: `<strong>No P&TY VIP sales history</strong> — projections based on CM score and comparable artist benchmarks. Confidence is lower.` })
+  }
+
+  if (bench?.shopify_monthly_revenue) {
+    factors.push({ type: 'positive', text: `<strong>Actual merch store data</strong> — averaging $${Math.round(bench.shopify_monthly_revenue).toLocaleString()}/mo in merch revenue` })
+  }
+
+  if (breakEvenMonths > 18) {
+    factors.push({ type: 'negative', text: `<strong>Front amount concern</strong> — $${frontAmount.toLocaleString()} front requires ${Math.ceil(breakEvenMonths)} months to recoup at projected mid-range revenue. Consider reducing to $${Math.round(monthlyMid * 12 * 0.6).toLocaleString()} or less.` })
+  }
+
+  if (engagement >= 60) factors.push({ type: 'positive', text: `<strong>Strong fan engagement</strong> — social following and VIP purchasing patterns suggest an active, spending-ready fanbase` })
+  if (engagement < 30 && !hasVipData) factors.push({ type: 'negative', text: `<strong>Low engagement</strong> — limited social activity suggests a passive audience unlikely to convert to merch sales` })
   if (momentum >= 60) factors.push({ type: 'positive', text: `<strong>Career momentum</strong> — streaming and social metrics trending upward, which correlates with merch demand` })
   if (momentum < 30) factors.push({ type: 'negative', text: `<strong>Declining momentum</strong> — streaming metrics flat or declining, limiting new fan acquisition and merch interest` })
-  if (touring >= 70) factors.push({ type: 'positive', text: `<strong>Active touring</strong> — consistent live shows create direct merch sales opportunities and reinforce fan engagement` })
-  if (touring < 30) factors.push({ type: 'negative', text: `<strong>Limited tour activity</strong> — without regular live shows, merch revenue relies entirely on e-commerce which historically underperforms` })
-  if (cm >= 70) factors.push({ type: 'positive', text: `<strong>Established career profile</strong> — CM score of ${cm} indicates industry-validated reach and relevance` })
+  if (touring >= 70) factors.push({ type: 'positive', text: `<strong>Active touring</strong> — consistent live shows create direct merch sales opportunities` })
   if (stage === 'legendary' && engagement < 40) factors.push({ type: 'neutral', text: `<strong>Legacy act consideration</strong> — high recognition but engagement gap suggests catalog/nostalgia model rather than active merch program` })
+
   if (factors.length < 2) factors.push({ type: 'neutral', text: `<strong>Limited data</strong> — recommend a small test order ($5-10K) to validate demand before scaling` })
 
   return {
@@ -198,10 +277,24 @@ export default function MerchPage() {
     setError('')
     setEvaluation(null)
 
+    const front = parseInt(frontAmount.replace(/[^0-9]/g, '')) || 50000
+
     try {
+      // Step 1: Find artist in our DB
       const res = await fetch(`/api/artists?search=${encodeURIComponent(artistName.trim())}&limit=1`)
       const data = await res.json()
-      const artists: ArtistResult[] = data.artists || []
+      let artists: ArtistResult[] = data.artists || []
+
+      // Step 2: If not in DB, try CM search (which also stores the artist)
+      if (artists.length === 0) {
+        const cmRes = await fetch(`/api/sync/chartmetric?search=${encodeURIComponent(artistName.trim())}`)
+        if (cmRes.ok) {
+          const cmData = await cmRes.json()
+          if (cmData.chartmetric_id) {
+            artists = [cmData]
+          }
+        }
+      }
 
       if (artists.length === 0) {
         setError(`No artist found matching "${artistName}". Try a different name.`)
@@ -211,7 +304,17 @@ export default function MerchPage() {
 
       const artist = artists[0]
       setArtistData(artist)
-      setEvaluation(evaluateArtist(artist))
+
+      // Step 3: Fetch benchmark data for this artist
+      let benchmarks: BenchmarkData | null = null
+      try {
+        const benchRes = await fetch(`/api/merch/benchmarks?artist=${encodeURIComponent(artist.name)}`)
+        if (benchRes.ok) {
+          benchmarks = await benchRes.json()
+        }
+      } catch { /* proceed without benchmarks */ }
+
+      setEvaluation(evaluateArtist(artist, front, benchmarks))
     } catch {
       setError('Something went wrong. Try again.')
     }
