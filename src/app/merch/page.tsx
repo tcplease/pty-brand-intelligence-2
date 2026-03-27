@@ -176,9 +176,12 @@ function evaluateVipMerch(
     risk = hasVipData ? 'low' : 'moderate'
   }
 
-  // Recommended max front = artist share at 75% sellthrough * 0.8
+  // Recommended max front: P&TY must recoup front AND make 30% margin
+  // Max front = P&TY share at 75% sellthrough / 1.30
+  // This ensures P&TY gets their money back + 30% profit at base case
   const baseCaseRow = rows.find(r => r.sellthrough === 0.75)
-  const recommendedMaxFront = Math.round((baseCaseRow?.artistShare ?? 0) * 0.8)
+  const ptyShareAtBase = baseCaseRow?.ptyShare ?? 0
+  const recommendedMaxFront = Math.round(ptyShareAtBase / 1.30)
 
   // Summary
   const dataConfidence = hasVipData
@@ -735,8 +738,8 @@ export default function MerchPage() {
               {[
                 { label: 'CM Score', value: String(vipEvaluation.cmScore), sub: vipEvaluation.tier, accent: Y },
                 { label: 'Total Packages', value: vipEvaluation.totalPackages.toLocaleString(), sub: `${numShows} shows \u00D7 ${packagesPerShow}/show`, accent: BLUE },
-                { label: 'Break-Even Sellthrough', value: vipEvaluation.breakEvenSellthrough !== null ? `${vipEvaluation.breakEvenSellthrough.toFixed(1)}%` : 'N/A', sub: vipEvaluation.breakEvenSellthrough !== null ? 'To recoup front' : 'Cannot recoup', accent: vipEvaluation.breakEvenSellthrough !== null && vipEvaluation.breakEvenSellthrough <= 75 ? GREEN : RED },
-                { label: 'Recommended Max Front', value: `$${vipEvaluation.recommendedMaxFront.toLocaleString()}`, sub: '75% sellthrough \u00D7 80%', accent: '#f5f4f2' },
+                { label: 'Break-Even Sellthrough', value: vipEvaluation.breakEvenSellthrough !== null ? `${vipEvaluation.breakEvenSellthrough.toFixed(1)}%` : 'N/A', sub: vipEvaluation.breakEvenSellthrough !== null ? `To recoup $${front.toLocaleString()} front` : 'Cannot recoup at any sellthrough', accent: vipEvaluation.breakEvenSellthrough !== null && vipEvaluation.breakEvenSellthrough <= 75 ? GREEN : RED },
+                { label: 'Recommended Max Front', value: `$${vipEvaluation.recommendedMaxFront.toLocaleString()}`, sub: 'P&TY share @ 75% w/ 30% margin', accent: '#f5f4f2' },
               ].map((m, i) => (
                 <div key={i} className="relative overflow-hidden p-4 md:p-6 rounded-md" style={{ background: SURFACE, border: '1px solid #333' }}>
                   <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: m.accent }} />
