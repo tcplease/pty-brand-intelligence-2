@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { getSpotifyToken, getLatestAlbum } from '@/lib/spotify'
 
 const CM_REFRESH_TOKEN = process.env.CHARTMETRIC_TOKEN!
 
@@ -212,6 +213,20 @@ export async function GET(request: Request) {
       }
     } catch { /* skip */ }
 
+    // Fetch last album release from Spotify (for album cycle tracking)
+    let lastAlbumReleaseDate: string | null = null
+    let lastAlbumName: string | null = null
+    if (spotifyArtistId) {
+      try {
+        const spToken = await getSpotifyToken()
+        const latest = await getLatestAlbum(spToken, spotifyArtistId)
+        if (latest) {
+          lastAlbumReleaseDate = latest.release_date
+          lastAlbumName = latest.name
+        }
+      } catch { /* skip — non-critical */ }
+    }
+
     const artistRecord = {
       chartmetric_id: cmId,
       name: meta?.name || match.name,
@@ -220,6 +235,8 @@ export async function GET(request: Request) {
       career_stage: career?.stage || null,
       primary_genre: meta?.primary_genre || null,
       spotify_artist_id: spotifyArtistId,
+      last_album_release_date: lastAlbumReleaseDate,
+      last_album_name: lastAlbumName,
       source: 'manual',
       discovery_status: 'unlisted',
       is_active: true,
@@ -328,6 +345,20 @@ export async function POST(request: Request) {
           getSpotifyArtistId(cmId, token),
         ])
 
+        // Fetch last album release from Spotify (for album cycle tracking)
+        let lastAlbumReleaseDate: string | null = null
+        let lastAlbumName: string | null = null
+        if (spotifyId) {
+          try {
+            const spToken = await getSpotifyToken()
+            const latest = await getLatestAlbum(spToken, spotifyId)
+            if (latest) {
+              lastAlbumReleaseDate = latest.release_date
+              lastAlbumName = latest.name
+            }
+          } catch { /* skip — non-critical */ }
+        }
+
         // Build the artist update — only include non-null values
         // so we never overwrite existing good data with null
         const rawUpdate: Record<string, any> = {
@@ -338,6 +369,8 @@ export async function POST(request: Request) {
           general_manager: meta?.general_manager,
           spotify_artist_id: spotifyId,
           career_stage: careerData.stage,
+          last_album_release_date: lastAlbumReleaseDate,
+          last_album_name: lastAlbumName,
           ...socialStats,
           cm_last_refreshed_at: new Date().toISOString(),
           is_active: true,

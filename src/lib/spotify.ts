@@ -83,6 +83,37 @@ export async function getArtistAlbums(token: string, spotifyId: string): Promise
   return data.items
 }
 
+/** Returns the most recent full album (no singles/compilations) for an artist.
+ *  Uses a separate API call with include_groups=album only to avoid 400 errors
+ *  that can occur with the combined album,single filter on some artist catalogs. */
+export async function getLatestAlbum(
+  token: string,
+  spotifyId: string
+): Promise<{ name: string; release_date: string } | null> {
+  const res = await fetch(
+    `https://api.spotify.com/v1/artists/${spotifyId}/albums?include_groups=album&limit=10&market=US`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  )
+
+  if (!res.ok) {
+    if (res.status === 429) {
+      const retryAfter = parseInt(res.headers.get('Retry-After') || '5')
+      await sleep(retryAfter * 1000)
+      return getLatestAlbum(token, spotifyId)
+    }
+    console.error(`Spotify latest album error for ${spotifyId}: ${res.status}`)
+    return null
+  }
+
+  const data: SpotifyAlbumsResponse = await res.json()
+  const fullAlbums = data.items
+    .filter(a => a.release_date_precision === 'day')
+    .sort((a, b) => b.release_date.localeCompare(a.release_date))
+
+  if (!fullAlbums.length) return null
+  return { name: fullAlbums[0].name, release_date: fullAlbums[0].release_date }
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }

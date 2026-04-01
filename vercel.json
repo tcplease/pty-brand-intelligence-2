@@ -11,6 +11,14 @@
     {
       "path": "/api/sync/monday",
       "schedule": "7 19 * * *"
+    },
+    {
+      "path": "/api/sync/spotify",
+      "schedule": "0 12 * * 2,5"
+    },
+    {
+      "path": "/api/sync/album-cycle",
+      "schedule": "0 12 * * 1"
     }
   ]
 }

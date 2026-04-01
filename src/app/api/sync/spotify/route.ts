@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase'
 import { getSpotifyToken, getArtistAlbums } from '@/lib/spotify'
+import { resurfaceIfHidden } from '@/lib/signals'
 import type { SpotifyAlbum } from '@/lib/spotify'
 
 function sleep(ms: number): Promise<void> {
@@ -83,9 +84,33 @@ export async function POST() {
             event_date: album.release_date,
           })
 
+          // If this is a full album (not a single), update the cycle tracker
+          // and clear any stale album_cycle_signal predictions
+          if (album.album_type === 'album') {
+            await supabase
+              .from('intel_artists')
+              .update({
+                last_album_release_date: album.release_date,
+                last_album_name: album.name,
+              })
+              .eq('chartmetric_id', artist.chartmetric_id)
+
+            // Remove outdated cycle predictions — real data overrides the guess
+            await supabase
+              .from('activity_log')
+              .delete()
+              .eq('chartmetric_id', artist.chartmetric_id)
+              .eq('event_type', 'album_cycle_signal')
+
+            console.log(`  🔄 ${artist.name}: cycle reset to "${album.name}" (${album.release_date})`)
+          }
+
           existingAlbumIds.add(album.id)
           newPresaves++
           console.log(`  💿 ${artist.name}: ${prefix} — "${album.name}" (${album.release_date})`)
+
+          // Resurface artist if they were dismissed or lost
+          await resurfaceIfHidden(supabase, artist.chartmetric_id, 'album_presave')
         }
 
         checked++

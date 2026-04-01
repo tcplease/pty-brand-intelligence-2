@@ -100,6 +100,7 @@ const EVENT_TYPE_CONFIG: Record<string, { color: string; icon: string }> = {
   stage_change:      { color: GREEN, icon: '📈' },
   added_to_pipeline: { color: GREEN, icon: '✅' },
   metric_spike:      { color: BLUE,  icon: '⚡' },
+  album_cycle_signal: { color: Y,   icon: '🔄' },
 }
 
 // ── Types ─────────────────────────────────────────────

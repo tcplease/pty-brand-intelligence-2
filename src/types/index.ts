@@ -44,6 +44,9 @@ export interface Artist {
   ri_audience_concentration: number | null
   ri_last_updated_at: string | null
   recent_momentum: string | null
+  // Album cycle tracking
+  last_album_release_date: string | null
+  last_album_name: string | null
 }
 
 export interface ArtistContact {
@@ -127,7 +130,7 @@ export interface FestivalAppearance {
 export interface ActivityLogEntry {
   id: string
   chartmetric_id: number
-  event_type: 'festival_added' | 'album_presave' | 'stage_change' | 'added_to_pipeline' | 'metric_spike' | 'rising_index_signal'
+  event_type: 'festival_added' | 'album_presave' | 'stage_change' | 'added_to_pipeline' | 'metric_spike' | 'rising_index_signal' | 'album_cycle_signal'
   event_title: string
   event_detail: Record<string, any> | null
   event_date: string | null

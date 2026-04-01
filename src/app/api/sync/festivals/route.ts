@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { resurfaceIfHidden } from '@/lib/signals'
 
 const CM_REFRESH_TOKEN = process.env.CHARTMETRIC_TOKEN!
 const CM_BASE = 'https://api.chartmetric.com/api'
@@ -267,6 +268,9 @@ async function runFestivalSync(request: Request) {
               },
               event_date: festDate,
             })
+
+            // Resurface artist if they were dismissed or lost
+            await resurfaceIfHidden(supabase, cmId, 'festival_added')
           }
         }
       }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { STAGE_ORDER } from '@/types'
@@ -196,7 +196,6 @@ function ArtistCard({ artist, href }: { artist: Artist; href: string }) {
 export default function RosterPage() {
   const router = useRouter()
   const [allArtists, setAllArtists] = useState<Artist[]>([])
-  const [artists, setArtists] = useState<Artist[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
@@ -249,7 +248,9 @@ export default function RosterPage() {
 
   useEffect(() => { fetchArtists() }, [fetchArtists])
 
-  useEffect(() => {
+  // Derive filtered/sorted artists synchronously via useMemo
+  // (eliminates stale render frame that caused ghost cards on search)
+  const artists = useMemo(() => {
     let result = [...allArtists]
     if (myDeals && user?.monday_person_name) {
       result = result.filter(a => a.sales_leads?.some(lead => lead === user.monday_person_name))
@@ -259,7 +260,7 @@ export default function RosterPage() {
     if (sort === 'score') result.sort((a, b) => (b.cm_score ?? 0) - (a.cm_score ?? 0))
     if (sort === 'az') result.sort((a, b) => a.name.localeCompare(b.name))
     if (sort === 'reach') result.sort((a, b) => (b.spotify_followers ?? 0) - (a.spotify_followers ?? 0))
-    setArtists(result)
+    return result
   }, [allArtists, genre, stageFilter, sort, myDeals, user])
 
   const handleSearch = (value: string) => {
