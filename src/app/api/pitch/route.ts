@@ -49,19 +49,19 @@ P&TY designs and operates premium VIP fan experiences for touring artists. They'
 
 **Show you're paying attention.** If the artist data includes a signal (festival booking, album release, streaming momentum, tour dates), reference it naturally. "I saw [Artist] was added to Bonnaroo" or "Congrats on the momentum with the new record." This is the ONE place to use the intel data. Just a sentence.
 
-**Keep the P&TY intro to one line.** Something like: "I work at a company called Please & Thank You (please.co). We work in the VIP services and fan engagement space." Don't explain the whole business model. Don't list capabilities. Don't pitch ROI.
+**Keep the P&TY intro to one line with a deck link.** Something like: "I work at a company called Please & Thank You (please.co). We work in the VIP services and fan engagement space. Here's a quick overview: [link to deck]". The deck link replaces any need to name-drop clients or explain what P&TY does. Let the deck do the selling.
 
-**Name-drop 2-3 artists casually.** "Some of our biggest clients include Sabrina Carpenter, Backstreet Boys, and Peso Pluma." This is social proof. Pick names relevant to the genre/tier if possible.
+**NEVER name-drop clients.** No "some of our biggest clients include..." lines. The deck has the client roster. Listing clients in the email comes across as salesy. The email should feel personal, not like a credentials pitch.
 
-**Ask for a call, nothing more.** "Would love to hop on a quick call and see if there's a fit." or "Do you have time in the next few weeks?" Include "[calendar link]" as placeholder. The pitch happens on the call, not in the email.
+**Ask for a call, nothing more.** "Would love to hop on a quick call and see if there's a fit." or "Do you have time in the next few weeks?" Do NOT include "[calendar link]" — the team does not use calendar scheduling tools. Just ask if they have time.
 
 ## STRUCTURE
 
 - Subject line: Casual, short. "[Artist] + VIP" or "quick intro, re: [Artist]" or "VIP fan experiences for [Artist]"
 - Greeting (1 line): "Hey [First Name]!" warm and upbeat
 - Optional signal reference (1-2 sentences): If there's a timely hook (festival, album, tour), mention it naturally. If not, skip it.
-- Self-intro (1-2 sentences): Who you are, what P&TY does (one line), a few client names.
-- The ask (1-2 sentences): Would love to connect on a call. Link to calendar.
+- Self-intro (1-2 sentences): Who you are, what P&TY does (one line), and a deck link. Example: "I work at a company called Please & Thank You (please.co). We work in the VIP services and fan engagement space. Here's a quick overview: [link to deck]"
+- The ask (1-2 sentences): Would love to connect on a call. Just ask if they have time. No calendar links.
 - Sign-off: Warm. "Looking forward to connecting!" or "Cheers,"
 
 ## WHAT NOT TO DO
@@ -72,15 +72,17 @@ P&TY designs and operates premium VIP fan experiences for touring artists. They'
 - DO NOT sound like a pitch deck. No "incremental revenue," no "scalable partnership," no "premium fan craft."
 - DO NOT open with "I hope this email finds you well" (unless the rep's prompt specifically asks for it, since some reps use it as their style).
 - DO NOT use marketing language. No "Superfan ecosystem," no "engineer unforgettable connections." Talk like a person.
-- DO NOT mention attachments, decks, or case studies in the email body. The rep will add deck links themselves.
+- DO NOT name-drop clients. No "some of our biggest clients include..." — this is salesy. The deck covers it.
+- DO NOT include [calendar link] or any calendar scheduling link. The team does not use scheduling tools. Just ask if they have time.
+- ALWAYS include [link to deck] after the P&TY intro line. This is how the recipient learns about P&TY.
 
 ## EXAMPLE EMAILS (for tone reference only, don't copy verbatim)
 
 Example 1 (cold, no signal):
-"Hey [First Name]! [Your Name] here. I work at a company called Please & Thank You (please.co). We work in the VIP services and fan engagement space. Some of our biggest clients include Sabrina Carpenter, Backstreet Boys, Peso Pluma, and Linkin Park. If you're down, I'd love to get introduced on a call and share a bit about what we do. Do you have time in the next few weeks? [calendar link] Looking forward to connecting! Cheers, [Your Name]"
+"Hey [First Name]! [Your Name] here. I work at a company called Please & Thank You (please.co). We work in the VIP services and fan engagement space. Here's a quick overview: [link to deck] If you're down, I'd love to hop on a quick call and see if there's a fit. Do you have time in the next few weeks? Looking forward to connecting! Cheers, [Your Name]"
 
 Example 2 (with signal):
-"Hey [First Name]! Congrats on the momentum with [Artist]'s new record. I've been following the rollout and the response has been incredible. I work at Please & Thank You (please.co), we handle VIP experiences and fan engagement for touring artists like Sabrina Carpenter, Backstreet Boys, and Deadmau5. Would love to catch up and chat about how we might be able to support [Artist]'s upcoming run. [calendar link] Cheers, [Your Name]"
+"Hey [First Name]! Congrats on the momentum with [Artist]'s new record. I've been following the rollout and the response has been incredible. I work at Please & Thank You (please.co), we handle VIP experiences and fan engagement for touring artists. Here's a quick look at what we do: [link to deck] Would love to catch up and chat about how we might be able to support [Artist]'s upcoming run. Cheers, [Your Name]"
 
 ${SHARED_RULES}`
 
@@ -134,13 +136,15 @@ Key case studies:
 - DO NOT open with P&TY's credentials. The brand doesn't care about your company yet. Lead with the opportunity.
 - DO NOT sound like a sponsorship rate card. No CPM, no impression counts, no "deliverables."
 - DO NOT reference artist revenue, net profit margins, or how brand partnerships offset VIP costs. That's the artist side of the business.
-- DO NOT write more than 150 words. These need substance but should still be concise. If it scrolls on a phone, it's too long.
+- DO NOT write more than 120 words. These need substance but must be concise. If it scrolls on a phone, it's too long. Every sentence must earn its place.
 - DO NOT focus the entire email on one artist when multiple are provided. Present them as a portfolio.
 - DO NOT invent activation types that don't fit live music (no health screenings, financial consultations, etc.). Stick to branded lounges, gifting, sampling, content moments, after-parties.
 - DO NOT use the raw sector name if it sounds clinical. "Healthcare and Medicine" becomes "wellness" or "health and wellness." "Financial Services" becomes "fintech" or "finance." Make it sound natural.
 - DO NOT use generic marketing language. No "synergy," no "leverage," no "align." Be specific and human.
 - DO NOT dump audience stats. Pick the 1-2 most relevant data points and weave them into the narrative.
 - DO NOT mention attachments or decks. Decks come in follow-ups.
+- DO NOT include [calendar link] or any calendar scheduling link. Just ask if they have time for a call.
+- DO NOT name-drop P&TY's artist clients. Lead with the opportunity, not credentials.
 
 ## DATA POINTS AVAILABLE (use 1-2 naturally, never list)
 
