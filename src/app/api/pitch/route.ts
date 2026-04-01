@@ -149,16 +149,24 @@ From P&TY research:
 
 ${SHARED_RULES}`
 
-// ── Detect pitch type from prompt and context ──────────
+// ── Detect pitch type ──────────────────────────────────
+// The Match page passes "Brand/Sector:" in the context — that's the only
+// reliable indicator of a brand pitch. Everything from the artist page
+// should ALWAYS be an artist relationship opener, even if the artist
+// context contains brand affinity data (that data is for the rep's
+// knowledge, not for the email).
 function detectPitchType(prompt: string, context: string): 'artist' | 'brand' {
-  const combined = (prompt + ' ' + context).toLowerCase()
-  // Brand indicators
-  if (combined.includes('brand') || combined.includes('sponsor') ||
-      combined.includes('partnership') || combined.includes('activation') ||
-      combined.includes('brand/sector:')) {
+  // Only trigger brand pitch if the context explicitly came from the Match page
+  if (context.toLowerCase().startsWith('brand/sector:')) {
     return 'brand'
   }
-  // Default to artist pitch
+  // The rep can also explicitly ask for a brand pitch from the artist page
+  const p = prompt.toLowerCase()
+  if (p.includes('brand pitch') || p.includes('brand partnership pitch') ||
+      p.includes('pitch to brand') || p.includes('pitch for brand')) {
+    return 'brand'
+  }
+  // Default: always artist relationship opener
   return 'artist'
 }
 
