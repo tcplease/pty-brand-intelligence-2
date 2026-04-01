@@ -520,6 +520,11 @@ export default function ArtistPage() {
   const [pitchInput, setPitchInput] = useState('')
   const [pitchOutput, setPitchOutput] = useState('')
   const [pitchLoading, setPitchLoading] = useState(false)
+  const [savedPitches, setSavedPitches] = useState<{ id: string; created_by_email: string; created_by_name: string; pitch_text: string; pitch_prompt: string | null; created_at: string }[]>([])
+  const [savingPitch, setSavingPitch] = useState(false)
+  const [pitchSaved, setPitchSaved] = useState(false)
+  const [expandedPitch, setExpandedPitch] = useState<string | null>(null)
+  const [currentUser, setCurrentUser] = useState<{ email: string; name: string } | null>(null)
 
   useEffect(() => {
     if (!id) return
@@ -537,10 +542,58 @@ export default function ArtistPage() {
       .catch(() => setLoading(false))
   }, [id])
 
+  // Fetch current user for pitch attribution
+  useEffect(() => {
+    fetch('/api/me').then(r => r.json()).then(d => {
+      if (d.email) setCurrentUser({ email: d.email, name: d.name })
+    }).catch(() => {})
+  }, [])
+
+  // Fetch saved pitches when pitch tab is opened
+  useEffect(() => {
+    if (activeTab !== 'pitch' || !id) return
+    fetch(`/api/saved-pitches?chartmetric_id=${id}`)
+      .then(r => r.json())
+      .then(d => setSavedPitches(d.pitches || []))
+      .catch(() => {})
+  }, [activeTab, id])
+
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text)
     setCopyMsg('Copied!')
     setTimeout(() => setCopyMsg(''), 1500)
+  }
+
+  const handleSavePitch = async () => {
+    if (!pitchOutput || !id || savingPitch) return
+    setSavingPitch(true)
+    try {
+      const res = await fetch('/api/saved-pitches', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chartmetric_id: parseInt(id as string),
+          pitch_text: pitchOutput,
+          pitch_prompt: pitchInput || null,
+        }),
+      })
+      const data = await res.json()
+      if (data.pitch) {
+        setSavedPitches(prev => [data.pitch, ...prev])
+        setPitchSaved(true)
+        setTimeout(() => setPitchSaved(false), 2000)
+      }
+    } catch { /* skip */ }
+    setSavingPitch(false)
+  }
+
+  const handleDeletePitch = async (pitchId: string) => {
+    try {
+      const res = await fetch(`/api/saved-pitches?id=${pitchId}`, { method: 'DELETE' })
+      if (res.ok) {
+        setSavedPitches(prev => prev.filter(p => p.id !== pitchId))
+      }
+    } catch { /* skip */ }
   }
 
   const handleGeneratePitch = async () => {
@@ -906,11 +959,77 @@ Festival Appearances: ${activity.filter(a => a.event_type === 'festival_added').
               <div className="rounded-xl border p-5" style={{ background: SURFACE, borderColor: BORDER }}>
                 <div className="flex items-center justify-between mb-4">
                   <div className="text-xs uppercase tracking-wider" style={{ color: W30 }}>Generated Pitch</div>
-                  <button onClick={() => handleCopy(pitchOutput)}
-                    className="text-xs px-3 py-1.5 rounded-lg border"
-                    style={{ borderColor: BORDER, color: W50 }}>Copy</button>
+                  <div className="flex gap-2">
+                    <button onClick={handleSavePitch} disabled={savingPitch || pitchSaved}
+                      className="text-xs px-3 py-1.5 rounded-lg border transition-colors"
+                      style={{ borderColor: pitchSaved ? GREEN : Y, color: pitchSaved ? GREEN : Y }}>
+                      {pitchSaved ? '✓ Saved' : savingPitch ? 'Saving…' : 'Save'}
+                    </button>
+                    <button onClick={() => handleCopy(pitchOutput)}
+                      className="text-xs px-3 py-1.5 rounded-lg border"
+                      style={{ borderColor: BORDER, color: W50 }}>Copy</button>
+                  </div>
                 </div>
                 <div className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: W80 }}>{pitchOutput}</div>
+              </div>
+            )}
+
+            {/* ── SAVED PITCHES ── */}
+            {savedPitches.length > 0 && (
+              <div className="mt-8">
+                <div className="text-xs uppercase tracking-wider mb-4" style={{ color: W50 }}>
+                  Saved Pitches ({savedPitches.length})
+                </div>
+                <div className="flex flex-col gap-3">
+                  {savedPitches.map(sp => {
+                    const isExpanded = expandedPitch === sp.id
+                    const isOwner = currentUser?.email === sp.created_by_email
+                    return (
+                      <div key={sp.id} className="rounded-xl border p-4" style={{ background: SURFACE, borderColor: BORDER }}>
+                        <div className="flex items-start justify-between gap-3 mb-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                              style={{ background: `${Y}20`, color: Y }}>
+                              {sp.created_by_name.charAt(0).toUpperCase()}
+                            </div>
+                            <span className="text-xs font-medium truncate" style={{ color: W80 }}>{sp.created_by_name}</span>
+                            <span className="text-xs shrink-0" style={{ color: W30 }}>
+                              {new Date(sp.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </span>
+                          </div>
+                          <div className="flex gap-2 shrink-0">
+                            <button onClick={() => handleCopy(sp.pitch_text)}
+                              className="text-xs px-2 py-1 rounded-lg border"
+                              style={{ borderColor: BORDER, color: W50 }}>Copy</button>
+                            {isOwner && (
+                              <button onClick={() => handleDeletePitch(sp.id)}
+                                className="text-xs px-2 py-1 rounded-lg border transition-colors hover:border-red-500 hover:text-red-400"
+                                style={{ borderColor: BORDER, color: W30 }}>Delete</button>
+                            )}
+                          </div>
+                        </div>
+                        {sp.pitch_prompt && (
+                          <div className="text-xs mb-2 px-2 py-1 rounded" style={{ color: W30, background: `${SURFACE2}` }}>
+                            Prompt: {sp.pitch_prompt}
+                          </div>
+                        )}
+                        <button
+                          onClick={() => setExpandedPitch(isExpanded ? null : sp.id)}
+                          className="w-full text-left"
+                        >
+                          <div className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: W80 }}>
+                            {isExpanded ? sp.pitch_text : sp.pitch_text.slice(0, 200) + (sp.pitch_text.length > 200 ? '…' : '')}
+                          </div>
+                          {sp.pitch_text.length > 200 && (
+                            <span className="text-xs mt-1 inline-block" style={{ color: Y }}>
+                              {isExpanded ? 'Show less' : 'Show more'}
+                            </span>
+                          )}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             )}
           </div>
