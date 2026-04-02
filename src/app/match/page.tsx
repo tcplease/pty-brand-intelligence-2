@@ -80,6 +80,7 @@ interface Artist {
   affinity_score: number
   combined_score: number
   deal_stage: string | null
+  first_show: string | null
 }
 
 interface BrandSuggestion { name: string; artist_count: number }
@@ -254,6 +255,7 @@ export default function BrandSearchPage() {
 
   // Deal stage filter (multi-select)
   const [selectedDealStages, setSelectedDealStages] = useState<Set<string>>(new Set())
+  const [wonUpcomingOnly, setWonUpcomingOnly] = useState(false)
   const toggleDealStage = (stage: string) => {
     setSelectedDealStages(prev => {
       const next = new Set(prev)
@@ -382,13 +384,22 @@ export default function BrandSearchPage() {
     setResults([])
     setHasSearched(false)
     setCareerFilter('All')
+    setWonUpcomingOnly(false)
   }
 
-  // Filter results by career stage and deal stage client-side
+  // Filter results by career stage, deal stage, and won+upcoming client-side
   const availableDealStages = Array.from(new Set(results.map(a => a.deal_stage).filter(Boolean) as string[]))
+  const fourteenDaysOut = new Date()
+  fourteenDaysOut.setDate(fourteenDaysOut.getDate() + 14)
+  const fourteenDaysOutStr = fourteenDaysOut.toISOString().split('T')[0]
+
   const filteredResults = results.filter(a => {
     if (careerFilter !== 'All' && a.career_stage?.toLowerCase() !== careerFilter.toLowerCase()) return false
     if (selectedDealStages.size > 0 && (!a.deal_stage || !selectedDealStages.has(a.deal_stage))) return false
+    if (wonUpcomingOnly) {
+      if (a.deal_stage !== 'Won (Final On-Sale Planned)') return false
+      if (!a.first_show || a.first_show < fourteenDaysOutStr) return false
+    }
     return true
   })
 
@@ -626,6 +637,25 @@ export default function BrandSearchPage() {
                   )}
                 </div>
               )}
+
+              {/* Won + Upcoming toggle */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setWonUpcomingOnly(prev => !prev)
+                    if (!wonUpcomingOnly) setSelectedDealStages(new Set())
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap active:opacity-70"
+                  style={{
+                    background: wonUpcomingOnly ? `${GREEN}22` : 'transparent',
+                    borderColor: wonUpcomingOnly ? GREEN : BORDER,
+                    color: wonUpcomingOnly ? GREEN : W50,
+                  }}
+                >Won + Upcoming</button>
+                {wonUpcomingOnly && (
+                  <span className="text-xs" style={{ color: W30 }}>Start date 14+ days out</span>
+                )}
+              </div>
 
               {/* Legend */}
               <div className="flex items-center gap-4 text-xs" style={{ color: W30 }}>

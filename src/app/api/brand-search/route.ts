@@ -43,16 +43,18 @@ export async function GET(request: Request) {
     // 1b. Get deal stages from Monday items
     const { data: mondayStages } = await supabase
       .from('intel_monday_items')
-      .select('chartmetric_id, stage, last_show')
+      .select('chartmetric_id, stage, last_show, first_show')
       .not('chartmetric_id', 'is', null)
 
     const today = new Date().toISOString().split('T')[0]
     const dealStageMap = new Map<number, string | null>()
+    const firstShowMap = new Map<number, string | null>()
     const seenIds = new Set<number>()
     for (const item of mondayStages || []) {
       const id = item.chartmetric_id as number
       const stage = item.stage as string | null
       const lastShow = item.last_show as string | null
+      const firstShow = (item as Record<string, unknown>).first_show as string | null
       const isHiddenStage = stage === null || HIDDEN_STAGES.includes(stage)
       const isExpired = lastShow != null && lastShow < today
       const isInactive = isHiddenStage || isExpired
@@ -61,6 +63,7 @@ export async function GET(request: Request) {
       const existing = dealStageMap.get(id)
       if (!existing || stagePriority(stage) > stagePriority(existing)) {
         dealStageMap.set(id, stage)
+        firstShowMap.set(id, firstShow)
       }
     }
     // Artists in Monday but with ALL deals inactive should be hidden
@@ -149,6 +152,7 @@ export async function GET(request: Request) {
         affinity_score: affinityScore,
         combined_score: Math.round(combinedScore * 10) / 10,
         deal_stage: dealStageMap.get(artist.chartmetric_id) ?? null,
+        first_show: firstShowMap.get(artist.chartmetric_id) ?? null,
       }
     })
     .filter((a: any) => {
