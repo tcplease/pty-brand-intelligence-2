@@ -249,9 +249,18 @@ export default function BrandSearchPage() {
   const [loading, setLoading] = useState(false)
   const [hasSearched, setHasSearched] = useState(false)
 
-  // Career stage filter
-  const [careerFilter, setCareerFilter] = useState<string>('All')
-  const careerStages = ['All', 'Legendary', 'Superstar', 'Mainstream', 'Mid-Level', 'Developing', 'Undiscovered']
+  // Career stage filter (multi-select)
+  const [selectedCareerStages, setSelectedCareerStages] = useState<Set<string>>(new Set())
+  const [showCareerDropdown, setShowCareerDropdown] = useState(false)
+  const careerStageOptions = ['Legendary', 'Superstar', 'Mainstream', 'Mid-Level', 'Developing', 'Undiscovered']
+  const toggleCareerStage = (stage: string) => {
+    setSelectedCareerStages(prev => {
+      const next = new Set(prev)
+      if (next.has(stage)) next.delete(stage)
+      else next.add(stage)
+      return next
+    })
+  }
 
   // Deal stage filter (multi-select)
   const [selectedDealStages, setSelectedDealStages] = useState<Set<string>>(new Set())
@@ -384,7 +393,7 @@ export default function BrandSearchPage() {
     setThreshold(20)
     setResults([])
     setHasSearched(false)
-    setCareerFilter('All')
+    setSelectedCareerStages(new Set())
     setWonUpcomingOnly(false)
   }
 
@@ -395,7 +404,7 @@ export default function BrandSearchPage() {
   const fourteenDaysOutStr = fourteenDaysOut.toISOString().split('T')[0]
 
   const filteredResults = results.filter(a => {
-    if (careerFilter !== 'All' && a.career_stage?.toLowerCase() !== careerFilter.toLowerCase()) return false
+    if (selectedCareerStages.size > 0 && (!a.career_stage || !selectedCareerStages.has(a.career_stage))) return false
     if (selectedDealStages.size > 0 && (!a.deal_stage || !selectedDealStages.has(a.deal_stage))) return false
     if (wonUpcomingOnly) {
       if (a.deal_stage !== 'Won (Final On-Sale Planned)') return false
@@ -593,27 +602,75 @@ export default function BrandSearchPage() {
                 {filteredResults.length} ARTIST{filteredResults.length !== 1 ? 'S' : ''}
               </div>
 
-              {/* Career stage filter chips */}
-              <div className="flex items-center gap-2 overflow-x-auto">
-                {careerStages.map(stage => (
-                  <button
-                    key={stage}
-                    onClick={() => setCareerFilter(stage)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap active:opacity-70"
-                    style={{
-                      background: careerFilter === stage ? `${Y}22` : 'transparent',
-                      borderColor: careerFilter === stage ? Y : BORDER,
-                      color: careerFilter === stage ? Y : W50,
-                    }}
-                  >{stage}</button>
-                ))}
+              {/* Filter dropdowns */}
+              <div className="flex items-center gap-2">
+
+              {/* Career stage dropdown (multi-select) */}
+              <div className="relative">
+                <button
+                  onClick={() => { setShowCareerDropdown(prev => !prev); setShowStageDropdown(false) }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap flex items-center gap-1.5"
+                  style={{
+                    background: selectedCareerStages.size > 0 ? `${Y}15` : 'transparent',
+                    borderColor: selectedCareerStages.size > 0 ? Y : BORDER,
+                    color: selectedCareerStages.size > 0 ? Y : W50,
+                  }}
+                >
+                  Career
+                  {selectedCareerStages.size > 0 && (
+                    <span className="w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold"
+                      style={{ background: Y, color: BG, fontSize: '9px' }}>
+                      {selectedCareerStages.size}
+                    </span>
+                  )}
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {showCareerDropdown && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setShowCareerDropdown(false)} />
+                    <div className="absolute top-full left-0 mt-1 z-40 rounded-xl border p-2 min-w-[180px] max-h-[320px] overflow-y-auto"
+                      style={{ background: SURFACE2, borderColor: BORDER }}>
+                      {careerStageOptions.map(stage => {
+                        const active = selectedCareerStages.has(stage)
+                        const color = CAREER_COLORS[stage.toLowerCase()] ?? W50
+                        return (
+                          <button
+                            key={stage}
+                            onClick={() => toggleCareerStage(stage)}
+                            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-left transition-colors hover:bg-white/5"
+                            style={{ color: active ? color : W50 }}
+                          >
+                            <span className="w-4 h-4 rounded border flex items-center justify-center shrink-0"
+                              style={{ borderColor: active ? color : BORDER, background: active ? color : 'transparent' }}>
+                              {active && <span style={{ color: BG, fontSize: '10px', fontWeight: 700 }}>✓</span>}
+                            </span>
+                            {stage}
+                          </button>
+                        )
+                      })}
+                      {selectedCareerStages.size > 0 && (
+                        <>
+                          <div className="my-1 border-t" style={{ borderColor: BORDER }} />
+                          <button
+                            onClick={() => setSelectedCareerStages(new Set())}
+                            className="w-full px-3 py-2 rounded-lg text-xs text-left transition-colors hover:bg-white/5"
+                            style={{ color: W30 }}
+                          >Clear all</button>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Deal stage dropdown (multi-select + Won+Upcoming) */}
               {availableDealStages.length > 0 && (
                 <div className="relative">
                   <button
-                    onClick={() => setShowStageDropdown(prev => !prev)}
+                    onClick={() => { setShowStageDropdown(prev => !prev); setShowCareerDropdown(false) }}
                     className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap flex items-center gap-1.5"
                     style={{
                       background: (selectedDealStages.size > 0 || wonUpcomingOnly) ? `${Y}15` : 'transparent',
@@ -697,6 +754,7 @@ export default function BrandSearchPage() {
                   )}
                 </div>
               )}
+              </div>{/* end filter dropdowns */}
 
               {/* Legend */}
               <div className="flex items-center gap-4 text-xs" style={{ color: W30 }}>
