@@ -256,6 +256,7 @@ export default function BrandSearchPage() {
   // Deal stage filter (multi-select)
   const [selectedDealStages, setSelectedDealStages] = useState<Set<string>>(new Set())
   const [wonUpcomingOnly, setWonUpcomingOnly] = useState(false)
+  const [showStageDropdown, setShowStageDropdown] = useState(false)
   const toggleDealStage = (stage: string) => {
     setSelectedDealStages(prev => {
       const next = new Set(prev)
@@ -608,54 +609,94 @@ export default function BrandSearchPage() {
                 ))}
               </div>
 
-              {/* Deal stage filter chips (multi-select) */}
+              {/* Deal stage dropdown (multi-select + Won+Upcoming) */}
               {availableDealStages.length > 0 && (
-                <div className="flex items-center gap-2 overflow-x-auto flex-nowrap">
-                  <span className="text-xs shrink-0" style={{ color: W30 }}>Stage:</span>
-                  {availableDealStages.map(stage => {
-                    const active = selectedDealStages.has(stage)
-                    const color = STAGE_COLORS[stage] ?? W50
-                    return (
-                      <button
-                        key={stage}
-                        onClick={() => toggleDealStage(stage)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap active:opacity-70"
-                        style={{
-                          background: active ? `${color}22` : 'transparent',
-                          borderColor: active ? color : BORDER,
-                          color: active ? color : W50,
-                        }}
-                      >{STAGE_SHORT_LABELS[stage] ?? stage}</button>
-                    )
-                  })}
-                  {selectedDealStages.size > 0 && (
-                    <button
-                      onClick={() => setSelectedDealStages(new Set())}
-                      className="text-xs px-2 py-1 rounded transition-colors"
-                      style={{ color: W30 }}
-                    >Clear</button>
+                <div className="relative">
+                  <button
+                    onClick={() => setShowStageDropdown(prev => !prev)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap flex items-center gap-1.5"
+                    style={{
+                      background: (selectedDealStages.size > 0 || wonUpcomingOnly) ? `${Y}15` : 'transparent',
+                      borderColor: (selectedDealStages.size > 0 || wonUpcomingOnly) ? Y : BORDER,
+                      color: (selectedDealStages.size > 0 || wonUpcomingOnly) ? Y : W50,
+                    }}
+                  >
+                    Deal Stage
+                    {(selectedDealStages.size > 0 || wonUpcomingOnly) && (
+                      <span className="w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold"
+                        style={{ background: Y, color: BG, fontSize: '9px' }}>
+                        {wonUpcomingOnly ? 1 : selectedDealStages.size}
+                      </span>
+                    )}
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {showStageDropdown && (
+                    <>
+                      <div className="fixed inset-0 z-30" onClick={() => setShowStageDropdown(false)} />
+                      <div className="absolute top-full left-0 mt-1 z-40 rounded-xl border p-2 min-w-[220px]"
+                        style={{ background: SURFACE2, borderColor: BORDER }}>
+
+                        {/* Won + Upcoming option */}
+                        <button
+                          onClick={() => {
+                            setWonUpcomingOnly(prev => !prev)
+                            if (!wonUpcomingOnly) setSelectedDealStages(new Set())
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-left transition-colors hover:bg-white/5"
+                          style={{ color: wonUpcomingOnly ? GREEN : W50 }}
+                        >
+                          <span className="w-4 h-4 rounded border flex items-center justify-center shrink-0"
+                            style={{ borderColor: wonUpcomingOnly ? GREEN : BORDER, background: wonUpcomingOnly ? GREEN : 'transparent' }}>
+                            {wonUpcomingOnly && <span style={{ color: BG, fontSize: '10px', fontWeight: 700 }}>✓</span>}
+                          </span>
+                          Won + Upcoming
+                          <span className="ml-auto" style={{ color: W30, fontSize: '10px' }}>14+ days out</span>
+                        </button>
+
+                        <div className="my-1 border-t" style={{ borderColor: BORDER }} />
+
+                        {/* Individual stage checkboxes */}
+                        {availableDealStages.map(stage => {
+                          const active = selectedDealStages.has(stage)
+                          const color = STAGE_COLORS[stage] ?? W50
+                          return (
+                            <button
+                              key={stage}
+                              onClick={() => {
+                                if (wonUpcomingOnly) setWonUpcomingOnly(false)
+                                toggleDealStage(stage)
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-left transition-colors hover:bg-white/5"
+                              style={{ color: active ? color : W50 }}
+                            >
+                              <span className="w-4 h-4 rounded border flex items-center justify-center shrink-0"
+                                style={{ borderColor: active ? color : BORDER, background: active ? color : 'transparent' }}>
+                                {active && <span style={{ color: BG, fontSize: '10px', fontWeight: 700 }}>✓</span>}
+                              </span>
+                              {STAGE_SHORT_LABELS[stage] ?? stage}
+                            </button>
+                          )
+                        })}
+
+                        {/* Clear all */}
+                        {(selectedDealStages.size > 0 || wonUpcomingOnly) && (
+                          <>
+                            <div className="my-1 border-t" style={{ borderColor: BORDER }} />
+                            <button
+                              onClick={() => { setSelectedDealStages(new Set()); setWonUpcomingOnly(false) }}
+                              className="w-full px-3 py-2 rounded-lg text-xs text-left transition-colors hover:bg-white/5"
+                              style={{ color: W30 }}
+                            >Clear all</button>
+                          </>
+                        )}
+                      </div>
+                    </>
                   )}
                 </div>
               )}
-
-              {/* Won + Upcoming toggle */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    setWonUpcomingOnly(prev => !prev)
-                    if (!wonUpcomingOnly) setSelectedDealStages(new Set())
-                  }}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap active:opacity-70"
-                  style={{
-                    background: wonUpcomingOnly ? `${GREEN}22` : 'transparent',
-                    borderColor: wonUpcomingOnly ? GREEN : BORDER,
-                    color: wonUpcomingOnly ? GREEN : W50,
-                  }}
-                >Won + Upcoming</button>
-                {wonUpcomingOnly && (
-                  <span className="text-xs" style={{ color: W30 }}>Start date 14+ days out</span>
-                )}
-              </div>
 
               {/* Legend */}
               <div className="flex items-center gap-4 text-xs" style={{ color: W30 }}>
