@@ -636,7 +636,7 @@ export default function BrandSearchPage() {
                   {showStageDropdown && (
                     <>
                       <div className="fixed inset-0 z-30" onClick={() => setShowStageDropdown(false)} />
-                      <div className="absolute top-full left-0 mt-1 z-40 rounded-xl border p-2 min-w-[220px]"
+                      <div className="absolute top-full left-0 mt-1 z-40 rounded-xl border p-2 min-w-[220px] max-h-[320px] overflow-y-auto"
                         style={{ background: SURFACE2, borderColor: BORDER }}>
 
                         {/* Won + Upcoming option */}
