@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createServiceClient } from '@/lib/supabase'
 
 // --- Sanitization ---
 
@@ -231,11 +231,12 @@ const FORMATTERS: Record<Platform, (contacts: ContactRow[]) => string> = {
 
 async function getStats(): Promise<NextResponse> {
   try {
+    const serviceClient = createServiceClient()
     const [{ count, error }, { data: latest }] = await Promise.all([
-      supabase
+      serviceClient
         .from('export_contacts')
         .select('*', { count: 'exact', head: true }),
-      supabase
+      serviceClient
         .from('export_contacts')
         .select('synced_at')
         .order('synced_at', { ascending: false })
@@ -274,7 +275,8 @@ export async function GET(request: NextRequest) {
 
   try {
     // Query all contacts from export table
-    const { data: contacts, error: contactsError } = await supabase
+    const serviceClient = createServiceClient()
+    const { data: contacts, error: contactsError } = await serviceClient
       .from('export_contacts')
       .select('contact_name, company_name, email, phone, role, source')
       .order('contact_name', { ascending: true })
