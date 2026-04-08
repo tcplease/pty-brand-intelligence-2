@@ -1,26 +1,70 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
-// --- Helper functions ---
+// --- Sanitization ---
+
+/** Strip characters that could trigger CSV injection or break parsing */
+function sanitize(value: string | null | undefined): string {
+  if (!value) return ''
+  let v = value.trim()
+  // Strip quotation marks (curly quotes, straight quotes, backticks)
+  v = v.replace(/["""''`]/g, '')
+  // Strip CSV injection triggers: cells starting with =, +, -, @, tab, CR
+  v = v.replace(/^[=+\-@\t\r]+/, '')
+  // Strip non-printable control characters (keep newline for address fields, but replace)
+  v = v.replace(/[\x00-\x09\x0B\x0C\x0E-\x1F\x7F]/g, '')
+  // Collapse multiple whitespace
+  v = v.replace(/\s+/g, ' ').trim()
+  return v
+}
+
+/** Validate email format loosely — reject obviously broken values */
+function isPlausibleEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+/** Validate phone — at least 7 digits after stripping formatting */
+function isPlausiblePhone(phone: string): boolean {
+  const digits = phone.replace(/\D/g, '')
+  return digits.length >= 7 && digits.length <= 15
+}
+
+// --- Name splitting ---
 
 function splitName(fullName: string | null): { firstName: string; lastName: string } {
   if (!fullName) return { firstName: '', lastName: '' }
-  const parts = fullName.trim().split(/\s+/)
+
+  let name = sanitize(fullName)
+
+  // Remove parenthetical nicknames: "Robert (Bobby) Smith" → "Robert Smith"
+  name = name.replace(/\(.*?\)/g, '').trim()
+  // Remove quoted nicknames: "Robert Bobby Smith" (already stripped quotes above)
+
+  const parts = name.split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return { firstName: '', lastName: '' }
   if (parts.length === 1) return { firstName: parts[0], lastName: '' }
-  return {
-    firstName: parts[0],
-    lastName: parts.slice(1).join(' '),
-  }
+  if (parts.length === 2) return { firstName: parts[0], lastName: parts[1] }
+
+  // 3+ parts — ambiguous (could be "Mary Jo Smith" or "John van der Berg")
+  // Conservative: first word is first name, leave lastName blank to avoid errors
+  return { firstName: parts[0], lastName: '' }
 }
+
+// --- Phone formatting ---
 
 function formatPhone(phone: string | null): string {
   if (!phone) return ''
-  let cleaned = phone.replace(/[\s\-\(\)\.]/g, '')
-  if (!cleaned.startsWith('+')) {
-    cleaned = '+1' + cleaned
+  const cleaned = sanitize(phone).replace(/[\s\-\(\)\.]/g, '')
+  if (!cleaned) return ''
+  let normalized = cleaned
+  if (!normalized.startsWith('+')) {
+    normalized = '+1' + normalized
   }
-  return cleaned
+  if (!isPlausiblePhone(normalized)) return ''
+  return normalized
 }
+
+// --- CSV helpers ---
 
 function escapeCSV(value: string): string {
   if (value.includes(',') || value.includes('"') || value.includes('\n')) {
@@ -30,7 +74,7 @@ function escapeCSV(value: string): string {
 }
 
 function buildCSVRow(values: string[]): string {
-  return values.map(escapeCSV).join(',')
+  return values.map((v) => escapeCSV(sanitize(v) || v)).join(',')
 }
 
 // --- Platform formatters ---
@@ -53,92 +97,131 @@ interface ContactRow {
   artist_name: string | null
 }
 
-function formatGoogleAds(contacts: ContactRow[]): string {
-  const header = 'Email,Phone,First Name,Last Name,Country,Zip'
-  const rows = contacts
-    .filter((c) => c.email)
-    .map((c) => {
-      const { firstName, lastName } = splitName(c.contact_name)
-      const phone = formatPhone(c.phone)
-      const country = c.country || 'US'
-      const zip = c.zip || ''
-      return buildCSVRow([c.email!, phone, firstName, lastName, country, zip])
+interface VerifyResult {
+  valid: ContactRow[]
+  skipped: number
+  reasons: Record<string, number>
+}
+
+/** Verify and clean all contacts, tracking skip reasons */
+function verifyContacts(contacts: ContactRow[], requireEmail: boolean): VerifyResult {
+  const valid: ContactRow[] = []
+  let skipped = 0
+  const reasons: Record<string, number> = {}
+
+  function skip(reason: string) {
+    skipped++
+    reasons[reason] = (reasons[reason] || 0) + 1
+  }
+
+  for (const c of contacts) {
+    const email = c.email ? sanitize(c.email).toLowerCase() : ''
+    const phone = formatPhone(c.phone)
+
+    if (requireEmail && (!email || !isPlausibleEmail(email))) {
+      skip('invalid_or_missing_email')
+      continue
+    }
+    if (!requireEmail && !email && !phone) {
+      skip('no_email_or_phone')
+      continue
+    }
+
+    valid.push({
+      ...c,
+      email: email || null,
+      phone: phone || null,
+      contact_name: sanitize(c.contact_name),
+      company_name: sanitize(c.company_name),
+      street: sanitize(c.street),
+      city: sanitize(c.city),
+      state: sanitize(c.state),
+      zip: sanitize(c.zip),
+      country: sanitize(c.country),
+      linkedin_url: sanitize(c.linkedin_url),
+      role: sanitize(c.role),
+      source: sanitize(c.source),
+      artist_name: sanitize(c.artist_name),
     })
+  }
+
+  return { valid, skipped, reasons }
+}
+
+function formatGoogleAds(contacts: ContactRow[]): string {
+  const { valid } = verifyContacts(contacts, true)
+  const header = 'Email,Phone,First Name,Last Name,Country,Zip'
+  const rows = valid.map((c) => {
+    const { firstName, lastName } = splitName(c.contact_name)
+    return buildCSVRow([c.email!, c.phone || '', firstName, lastName, c.country || 'US', c.zip || ''])
+  })
   return [header, ...rows].join('\n')
 }
 
 function formatMeta(contacts: ContactRow[]): string {
+  const { valid } = verifyContacts(contacts, true)
   const header = 'email,phone,fn,ln,ct,st,zip,country'
-  const rows = contacts
-    .filter((c) => c.email)
-    .map((c) => {
-      const { firstName, lastName } = splitName(c.contact_name)
-      const phone = formatPhone(c.phone).replace(/^\+/, '')
-      const city = (c.city || '').toLowerCase().replace(/\s+/g, '')
-      const state = (c.state || '').toLowerCase()
-      const zip = c.zip || ''
-      const country = (c.country || 'US').toLowerCase()
-      return buildCSVRow([
-        c.email!.toLowerCase(),
-        phone,
-        firstName.toLowerCase(),
-        lastName.toLowerCase(),
-        city,
-        state,
-        zip.toLowerCase(),
-        country,
-      ])
-    })
+  const rows = valid.map((c) => {
+    const { firstName, lastName } = splitName(c.contact_name)
+    const phone = (c.phone || '').replace(/^\+/, '')
+    const city = (c.city || '').toLowerCase().replace(/\s+/g, '')
+    return buildCSVRow([
+      c.email!.toLowerCase(),
+      phone,
+      firstName.toLowerCase(),
+      lastName.toLowerCase(),
+      city,
+      (c.state || '').toLowerCase(),
+      (c.zip || '').toLowerCase(),
+      (c.country || 'US').toLowerCase(),
+    ])
+  })
   return [header, ...rows].join('\n')
 }
 
 function formatLinkedIn(contacts: ContactRow[]): string {
+  const { valid } = verifyContacts(contacts, true)
   const header = 'email,firstName,lastName,companyName,jobTitle'
-  const rows = contacts
-    .filter((c) => c.email)
-    .map((c) => {
-      const { firstName, lastName } = splitName(c.contact_name)
-      const company = c.company_name || ''
-      const role = c.role || ''
-      const jobTitle = role
-        .split('_')
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' ')
-      return buildCSVRow([c.email!, firstName, lastName, company, jobTitle])
-    })
+  const rows = valid.map((c) => {
+    const { firstName, lastName } = splitName(c.contact_name)
+    const role = c.role || ''
+    const jobTitle = role
+      .split('_')
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ')
+    return buildCSVRow([c.email!, firstName, lastName, c.company_name || '', jobTitle])
+  })
   return [header, ...rows].join('\n')
 }
 
 function formatTikTok(contacts: ContactRow[]): string {
+  const { valid } = verifyContacts(contacts, false)
   const header = 'email,email,email,phone,phone,phone,maid'
-  const rows = contacts
-    .filter((c) => c.email || c.phone)
-    .map((c) => {
-      const email = c.email || ''
-      const phone = formatPhone(c.phone)
-      return buildCSVRow([email, '', '', phone, '', '', ''])
-    })
+  const rows = valid.map((c) =>
+    buildCSVRow([c.email || '', '', '', c.phone || '', '', '', ''])
+  )
   return [header, ...rows].join('\n')
 }
 
 function formatRaw(contacts: ContactRow[]): string {
+  // Raw includes everything — no email requirement, no verification filtering
   const header =
     'artist_name,contact_name,role,company_name,email,phone,street,city,state,zip,country,linkedin_url,source'
   const rows = contacts.map((c) =>
     buildCSVRow([
-      c.artist_name || '',
-      c.contact_name || '',
-      c.role || '',
-      c.company_name || '',
-      c.email || '',
+      sanitize(c.artist_name),
+      sanitize(c.contact_name),
+      sanitize(c.role),
+      sanitize(c.company_name),
+      sanitize(c.email),
       formatPhone(c.phone),
-      c.street || '',
-      c.city || '',
-      c.state || '',
-      c.zip || '',
-      c.country || '',
-      c.linkedin_url || '',
-      c.source || '',
+      sanitize(c.street),
+      sanitize(c.city),
+      sanitize(c.state),
+      sanitize(c.zip),
+      sanitize(c.country),
+      sanitize(c.linkedin_url),
+      sanitize(c.source),
     ])
   )
   return [header, ...rows].join('\n')
@@ -152,23 +235,17 @@ const FORMATTERS: Record<Platform, (contacts: ContactRow[]) => string> = {
   raw: formatRaw,
 }
 
-// --- Stats endpoint (no platform param) ---
+// --- Stats endpoint ---
 
 async function getStats(): Promise<NextResponse> {
   try {
-    const { data: contacts, error } = await supabase
+    const { count, error } = await supabase
       .from('intel_artist_contacts')
-      .select('chartmetric_id, email')
+      .select('*', { count: 'exact', head: true })
 
     if (error) throw error
 
-    const withEmail = (contacts || []).filter((c) => c.email)
-    const uniqueArtists = new Set(withEmail.map((c) => c.chartmetric_id))
-
-    return NextResponse.json({
-      total_contacts: withEmail.length,
-      total_artists: uniqueArtists.size,
-    })
+    return NextResponse.json({ total_contacts: count ?? 0 })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -180,8 +257,6 @@ async function getStats(): Promise<NextResponse> {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const platform = searchParams.get('platform') as Platform | null
-  const stage = searchParams.get('stage')
-  const role = searchParams.get('role')
 
   // Stats endpoint when no platform specified
   if (!platform) {
@@ -196,48 +271,15 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Step 1: Get all monday items to build a stage map and identify "Lost" artists
-    const { data: mondayItems, error: mondayError } = await supabase
-      .from('intel_monday_items')
-      .select('chartmetric_id, stage')
-      .not('chartmetric_id', 'is', null)
-
-    if (mondayError) throw mondayError
-
-    // Build a map of chartmetric_id → latest stage
-    // An artist may have multiple monday items; use the "best" (most advanced) stage
-    const stageMap = new Map<number, string>()
-    const lostArtists = new Set<number>()
-
-    for (const item of mondayItems || []) {
-      if (!item.chartmetric_id) continue
-      const currentStage = item.stage || ''
-      if (currentStage === 'Lost') {
-        // Only mark as lost if ALL their items are lost
-        if (!stageMap.has(item.chartmetric_id)) {
-          lostArtists.add(item.chartmetric_id)
-        }
-      } else {
-        lostArtists.delete(item.chartmetric_id)
-        stageMap.set(item.chartmetric_id, currentStage)
-      }
-    }
-
-    // Step 2: Query contacts and artists in parallel
-    let contactQuery = supabase
-      .from('intel_artist_contacts')
-      .select(
-        'contact_name, company_name, email, phone, street, city, state, zip, country, linkedin_url, role, source, chartmetric_id'
-      )
-      .order('contact_name', { ascending: true })
-
-    if (role) {
-      contactQuery = contactQuery.eq('role', role)
-    }
-
+    // Query all contacts + artist names in parallel
     const [{ data: contacts, error: contactsError }, { data: artists, error: artistsError }] =
       await Promise.all([
-        contactQuery,
+        supabase
+          .from('intel_artist_contacts')
+          .select(
+            'contact_name, company_name, email, phone, street, city, state, zip, country, linkedin_url, role, source, chartmetric_id'
+          )
+          .order('contact_name', { ascending: true }),
         supabase.from('intel_artists').select('chartmetric_id, name'),
       ])
 
@@ -250,39 +292,25 @@ export async function GET(request: NextRequest) {
       artistNames.set(a.chartmetric_id, a.name)
     }
 
-    // Step 3: Filter out Lost artists and apply stage filter
-    const filtered = (contacts || [])
-      .filter((c) => {
-        // Exclude contacts whose artist's only stage is Lost
-        if (lostArtists.has(c.chartmetric_id)) return false
+    // Map contacts with artist names — no filtering, export everyone
+    const rows: ContactRow[] = (contacts || []).map((c) => ({
+      contact_name: c.contact_name,
+      company_name: c.company_name,
+      email: c.email,
+      phone: c.phone,
+      street: c.street,
+      city: c.city,
+      state: c.state,
+      zip: c.zip,
+      country: c.country,
+      linkedin_url: c.linkedin_url,
+      role: c.role,
+      source: c.source,
+      artist_name: artistNames.get(c.chartmetric_id) || null,
+    }))
 
-        // Apply stage filter if specified
-        if (stage) {
-          const artistStage = stageMap.get(c.chartmetric_id)
-          if (!artistStage) return false
-          if (artistStage !== stage) return false
-        }
-
-        return true
-      })
-      .map((c) => ({
-        contact_name: c.contact_name,
-        company_name: c.company_name,
-        email: c.email,
-        phone: c.phone,
-        street: c.street,
-        city: c.city,
-        state: c.state,
-        zip: c.zip,
-        country: c.country,
-        linkedin_url: c.linkedin_url,
-        role: c.role,
-        source: c.source,
-        artist_name: artistNames.get(c.chartmetric_id) || null,
-      }))
-
-    // Step 4: Format CSV
-    const csvContent = FORMATTERS[platform](filtered)
+    // Format CSV
+    const csvContent = FORMATTERS[platform](rows)
     const date = new Date().toISOString().split('T')[0]
 
     return new Response(csvContent, {

@@ -11,11 +11,6 @@ const W80 = 'rgba(255,255,255,0.8)'
 const W50 = 'rgba(255,255,255,0.5)'
 const W30 = 'rgba(255,255,255,0.3)'
 
-interface StatsData {
-  total_contacts: number
-  total_artists: number
-}
-
 interface PlatformOption {
   key: string
   label: string
@@ -28,23 +23,6 @@ const PLATFORMS: PlatformOption[] = [
   { key: 'linkedin', label: 'LinkedIn Matched Audiences', description: 'Email, Name, Company, Job Title' },
   { key: 'tiktok', label: 'TikTok Ads', description: 'Email + Phone columns with MAID' },
   { key: 'raw', label: 'Raw CSV (All Fields)', description: 'Complete data export with artist names' },
-]
-
-const STAGES = [
-  'Outbound - No Contact',
-  'Outbound - Automated Contact',
-  'Prospect - Direct Sales Agent Contact',
-  'Active Leads (Contact Has Responded)',
-  'Proposal (financials submitted)',
-  'Negotiation (Terms Being Discussed)',
-  'Finalizing On-Sale (Terms Agreed)',
-  'Won (Final On-Sale Planned)',
-]
-
-const ROLES = [
-  { key: 'manager', label: 'Manager' },
-  { key: 'agent', label: 'Agent' },
-  { key: 'business_manager', label: 'Business Manager' },
 ]
 
 function DownloadIcon() {
@@ -62,17 +40,15 @@ function DownloadIcon() {
 }
 
 export default function ExportPage() {
-  const [stats, setStats] = useState<StatsData | null>(null)
+  const [totalContacts, setTotalContacts] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState<string | null>(null)
-  const [stage, setStage] = useState('')
-  const [role, setRole] = useState('')
 
   useEffect(() => {
     fetch('/api/admin/export-contacts')
       .then((res) => res.json())
       .then((data) => {
-        setStats(data)
+        setTotalContacts(data.total_contacts ?? null)
         setLoading(false)
       })
       .catch(() => setLoading(false))
@@ -81,11 +57,7 @@ export default function ExportPage() {
   async function handleDownload(platform: string) {
     setDownloading(platform)
     try {
-      const params = new URLSearchParams({ platform })
-      if (stage) params.set('stage', stage)
-      if (role) params.set('role', role)
-
-      const res = await fetch(`/api/admin/export-contacts?${params}`)
+      const res = await fetch(`/api/admin/export-contacts?platform=${platform}`)
       if (!res.ok) {
         const err = await res.json()
         alert(err.error || 'Download failed')
@@ -113,14 +85,7 @@ export default function ExportPage() {
   }
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: BG,
-        color: W80,
-        padding: '32px 24px',
-      }}
-    >
+    <div style={{ minHeight: '100vh', background: BG, color: W80, padding: '32px 24px' }}>
       <div style={{ maxWidth: 640, margin: '0 auto' }}>
         {/* Header */}
         <div style={{ marginBottom: 32 }}>
@@ -140,85 +105,20 @@ export default function ExportPage() {
             borderRadius: 12,
             padding: '16px 20px',
             marginBottom: 24,
-            display: 'flex',
-            gap: 32,
           }}
         >
           {loading ? (
-            <span style={{ fontSize: 13, color: W30 }}>Loading stats...</span>
-          ) : stats ? (
-            <>
-              <div>
-                <span style={{ fontSize: 22, fontWeight: 700, fontFamily: 'monospace', color: Y }}>
-                  {stats.total_contacts.toLocaleString()}
-                </span>
-                <span style={{ fontSize: 13, color: W50, marginLeft: 8 }}>contacts</span>
-              </div>
-              <div>
-                <span style={{ fontSize: 22, fontWeight: 700, fontFamily: 'monospace', color: Y }}>
-                  {stats.total_artists.toLocaleString()}
-                </span>
-                <span style={{ fontSize: 13, color: W50, marginLeft: 8 }}>artists</span>
-              </div>
-            </>
+            <span style={{ fontSize: 13, color: W30 }}>Loading...</span>
+          ) : totalContacts !== null ? (
+            <div>
+              <span style={{ fontSize: 22, fontWeight: 700, fontFamily: 'monospace', color: Y }}>
+                {totalContacts.toLocaleString()}
+              </span>
+              <span style={{ fontSize: 13, color: W50, marginLeft: 8 }}>contacts in database</span>
+            </div>
           ) : (
             <span style={{ fontSize: 13, color: W30 }}>Failed to load stats</span>
           )}
-        </div>
-
-        {/* Filters */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 12,
-            marginBottom: 24,
-            flexWrap: 'wrap',
-          }}
-        >
-          <select
-            value={stage}
-            onChange={(e) => setStage(e.target.value)}
-            style={{
-              background: SURFACE2,
-              border: `1px solid ${BORDER}`,
-              borderRadius: 8,
-              padding: '8px 12px',
-              color: W80,
-              fontSize: 13,
-              flex: 1,
-              minWidth: 200,
-              cursor: 'pointer',
-            }}
-          >
-            <option value="">All Stages (excl. Lost)</option>
-            {STAGES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            style={{
-              background: SURFACE2,
-              border: `1px solid ${BORDER}`,
-              borderRadius: 8,
-              padding: '8px 12px',
-              color: W80,
-              fontSize: 13,
-              minWidth: 160,
-              cursor: 'pointer',
-            }}
-          >
-            <option value="">All Roles</option>
-            {ROLES.map((r) => (
-              <option key={r.key} value={r.key}>
-                {r.label}
-              </option>
-            ))}
-          </select>
         </div>
 
         {/* Download buttons */}
@@ -260,13 +160,7 @@ export default function ExportPage() {
                   </div>
                   <div style={{ fontSize: 12, color: W30 }}>{p.description}</div>
                 </div>
-                <div
-                  style={{
-                    color: isDownloading ? W30 : Y,
-                    flexShrink: 0,
-                    marginLeft: 16,
-                  }}
-                >
+                <div style={{ color: isDownloading ? W30 : Y, flexShrink: 0, marginLeft: 16 }}>
                   {isDownloading ? (
                     <span style={{ fontSize: 13 }}>Downloading...</span>
                   ) : (
@@ -280,7 +174,8 @@ export default function ExportPage() {
 
         {/* Footer note */}
         <p style={{ fontSize: 12, color: W30, marginTop: 24, textAlign: 'center' }}>
-          Exports exclude contacts from Lost-stage artists. Contacts without email are excluded from platform exports (except TikTok with phone).
+          All contacts are sanitized before export. Invalid emails and suspicious cell content are
+          stripped automatically. Platform exports require a valid email (except TikTok which accepts phone-only).
         </p>
       </div>
     </div>
