@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 
 const Y = '#F9D40A'
 const BG = '#0f0f0f'
@@ -22,7 +22,7 @@ const PLATFORMS: PlatformOption[] = [
   { key: 'meta', label: 'Meta Custom Audiences', description: 'Lowercase format with all demographics' },
   { key: 'linkedin', label: 'LinkedIn Matched Audiences', description: 'Email, Name, Company, Job Title' },
   { key: 'tiktok', label: 'TikTok Ads', description: 'Email + Phone columns with MAID' },
-  { key: 'raw', label: 'Raw CSV (All Fields)', description: 'Complete data export with artist names' },
+  { key: 'raw', label: 'Raw CSV (All Fields)', description: 'Complete data export' },
 ]
 
 function DownloadIcon() {
@@ -39,20 +39,70 @@ function DownloadIcon() {
   )
 }
 
+function RefreshIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        d="M1.5 3v4.5h4.5M16.5 15v-4.5H12M2.25 11.25a6.75 6.75 0 0111.4-3.37L16.5 10.5M1.5 7.5l2.85 2.62a6.75 6.75 0 0011.4-3.37"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function formatTimestamp(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+    ' at ' +
+    d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
+
 export default function ExportPage() {
   const [totalContacts, setTotalContacts] = useState<number | null>(null)
+  const [lastSynced, setLastSynced] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [syncing, setSyncing] = useState(false)
+  const [syncStatus, setSyncStatus] = useState('')
   const [downloading, setDownloading] = useState<string | null>(null)
 
-  useEffect(() => {
+  const fetchStats = useCallback(() => {
     fetch('/api/admin/export-contacts')
       .then((res) => res.json())
       .then((data) => {
         setTotalContacts(data.total_contacts ?? null)
+        setLastSynced(data.last_synced ?? null)
         setLoading(false)
       })
       .catch(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    fetchStats()
+  }, [fetchStats])
+
+  async function handleSync() {
+    setSyncing(true)
+    setSyncStatus('Pulling contacts from Monday CRM...')
+    try {
+      const res = await fetch('/api/admin/sync-export-contacts', { method: 'POST' })
+      if (!res.ok) {
+        const err = await res.json()
+        setSyncStatus(`Sync failed: ${err.error || 'Unknown error'}`)
+        return
+      }
+      const data = await res.json()
+      setSyncStatus(`Synced ${data.synced.toLocaleString()} contacts`)
+      fetchStats()
+      setTimeout(() => setSyncStatus(''), 4000)
+    } catch {
+      setSyncStatus('Sync failed. Please try again.')
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   async function handleDownload(platform: string) {
     setDownloading(platform)
@@ -93,7 +143,7 @@ export default function ExportPage() {
             Contact Export
           </h1>
           <p style={{ fontSize: 14, color: W50 }}>
-            Download contacts formatted for ad platform upload
+            Download CRM contacts formatted for ad platform upload
           </p>
         </div>
 
@@ -104,22 +154,78 @@ export default function ExportPage() {
             border: `1px solid ${BORDER}`,
             borderRadius: 12,
             padding: '16px 20px',
-            marginBottom: 24,
+            marginBottom: 16,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 12,
           }}
         >
-          {loading ? (
-            <span style={{ fontSize: 13, color: W30 }}>Loading...</span>
-          ) : totalContacts !== null ? (
-            <div>
-              <span style={{ fontSize: 22, fontWeight: 700, fontFamily: 'monospace', color: Y }}>
-                {totalContacts.toLocaleString()}
-              </span>
-              <span style={{ fontSize: 13, color: W50, marginLeft: 8 }}>contacts in database</span>
-            </div>
-          ) : (
-            <span style={{ fontSize: 13, color: W30 }}>Failed to load stats</span>
-          )}
+          <div>
+            {loading ? (
+              <span style={{ fontSize: 13, color: W30 }}>Loading...</span>
+            ) : totalContacts !== null ? (
+              <>
+                <span style={{ fontSize: 22, fontWeight: 700, fontFamily: 'monospace', color: Y }}>
+                  {totalContacts.toLocaleString()}
+                </span>
+                <span style={{ fontSize: 13, color: W50, marginLeft: 8 }}>contacts</span>
+                {lastSynced && (
+                  <div style={{ fontSize: 11, color: W30, marginTop: 4 }}>
+                    Last synced {formatTimestamp(lastSynced)}
+                  </div>
+                )}
+              </>
+            ) : (
+              <span style={{ fontSize: 13, color: W30 }}>No contacts synced yet</span>
+            )}
+          </div>
         </div>
+
+        {/* Refresh button */}
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          style={{
+            width: '100%',
+            background: syncing ? SURFACE : Y,
+            color: syncing ? W50 : BG,
+            border: 'none',
+            borderRadius: 12,
+            padding: '14px 20px',
+            fontSize: 14,
+            fontWeight: 700,
+            cursor: syncing ? 'wait' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            marginBottom: 24,
+            transition: 'all 200ms ease',
+            opacity: syncing ? 0.7 : 1,
+          }}
+        >
+          <span style={{ display: 'flex', animation: syncing ? 'spin 1s linear infinite' : 'none' }}>
+            <RefreshIcon />
+          </span>
+          {syncing ? 'Syncing...' : 'Refresh from Monday CRM'}
+        </button>
+
+        {/* Sync status message */}
+        {syncStatus && (
+          <div
+            style={{
+              fontSize: 13,
+              color: syncStatus.includes('failed') ? '#FF4444' : '#00D26A',
+              textAlign: 'center',
+              marginTop: -16,
+              marginBottom: 16,
+            }}
+          >
+            {syncStatus}
+          </div>
+        )}
 
         {/* Download buttons */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -174,9 +280,12 @@ export default function ExportPage() {
 
         {/* Footer note */}
         <p style={{ fontSize: 12, color: W30, marginTop: 24, textAlign: 'center' }}>
-          All contacts are sanitized before export. Invalid emails and suspicious cell content are
+          Pulls all contacts from the Monday CRM board. Invalid emails and suspicious cell content are
           stripped automatically. Platform exports require a valid email (except TikTok which accepts phone-only).
         </p>
+
+        {/* CSS for spin animation */}
+        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       </div>
     </div>
   )

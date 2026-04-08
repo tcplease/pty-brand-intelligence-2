@@ -205,22 +205,14 @@ function formatTikTok(contacts: ContactRow[]): string {
 
 function formatRaw(contacts: ContactRow[]): string {
   // Raw includes everything — no email requirement, no verification filtering
-  const header =
-    'artist_name,contact_name,role,company_name,email,phone,street,city,state,zip,country,linkedin_url,source'
+  const header = 'contact_name,role,company_name,email,phone,source'
   const rows = contacts.map((c) =>
     buildCSVRow([
-      sanitize(c.artist_name),
       sanitize(c.contact_name),
       sanitize(c.role),
       sanitize(c.company_name),
       sanitize(c.email),
       formatPhone(c.phone),
-      sanitize(c.street),
-      sanitize(c.city),
-      sanitize(c.state),
-      sanitize(c.zip),
-      sanitize(c.country),
-      sanitize(c.linkedin_url),
       sanitize(c.source),
     ])
   )
@@ -239,13 +231,23 @@ const FORMATTERS: Record<Platform, (contacts: ContactRow[]) => string> = {
 
 async function getStats(): Promise<NextResponse> {
   try {
-    const { count, error } = await supabase
-      .from('intel_artist_contacts')
-      .select('*', { count: 'exact', head: true })
+    const [{ count, error }, { data: latest }] = await Promise.all([
+      supabase
+        .from('export_contacts')
+        .select('*', { count: 'exact', head: true }),
+      supabase
+        .from('export_contacts')
+        .select('synced_at')
+        .order('synced_at', { ascending: false })
+        .limit(1),
+    ])
 
     if (error) throw error
 
-    return NextResponse.json({ total_contacts: count ?? 0 })
+    return NextResponse.json({
+      total_contacts: count ?? 0,
+      last_synced: latest?.[0]?.synced_at ?? null,
+    })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -271,42 +273,28 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Query all contacts + artist names in parallel
-    const [{ data: contacts, error: contactsError }, { data: artists, error: artistsError }] =
-      await Promise.all([
-        supabase
-          .from('intel_artist_contacts')
-          .select(
-            'contact_name, company_name, email, phone, street, city, state, zip, country, linkedin_url, role, source, chartmetric_id'
-          )
-          .order('contact_name', { ascending: true }),
-        supabase.from('intel_artists').select('chartmetric_id, name'),
-      ])
+    // Query all contacts from export table
+    const { data: contacts, error: contactsError } = await supabase
+      .from('export_contacts')
+      .select('contact_name, company_name, email, phone, role, source')
+      .order('contact_name', { ascending: true })
 
     if (contactsError) throw contactsError
-    if (artistsError) throw artistsError
 
-    // Build artist name lookup
-    const artistNames = new Map<number, string>()
-    for (const a of artists || []) {
-      artistNames.set(a.chartmetric_id, a.name)
-    }
-
-    // Map contacts with artist names — no filtering, export everyone
     const rows: ContactRow[] = (contacts || []).map((c) => ({
       contact_name: c.contact_name,
       company_name: c.company_name,
       email: c.email,
       phone: c.phone,
-      street: c.street,
-      city: c.city,
-      state: c.state,
-      zip: c.zip,
-      country: c.country,
-      linkedin_url: c.linkedin_url,
+      street: null,
+      city: null,
+      state: null,
+      zip: null,
+      country: null,
+      linkedin_url: null,
       role: c.role,
       source: c.source,
-      artist_name: artistNames.get(c.chartmetric_id) || null,
+      artist_name: null,
     }))
 
     // Format CSV
