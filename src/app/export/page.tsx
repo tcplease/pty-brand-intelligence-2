@@ -18,11 +18,11 @@ interface PlatformOption {
 }
 
 const PLATFORMS: PlatformOption[] = [
-  { key: 'google_ads', label: 'Google Ads Customer Match', description: 'Email, Phone, Name, Country, Zip' },
-  { key: 'meta', label: 'Meta Custom Audiences', description: 'Lowercase format with all demographics' },
-  { key: 'linkedin', label: 'LinkedIn Matched Audiences', description: 'Email, Name, Company, Job Title' },
-  { key: 'tiktok', label: 'TikTok Ads', description: 'Email + Phone columns with MAID' },
-  { key: 'raw', label: 'Raw CSV (All Fields)', description: 'Complete data export' },
+  { key: 'google_ads', label: 'Google Ads Customer Match', description: 'Requires email — includes name, phone, country, zip' },
+  { key: 'meta', label: 'Meta Custom Audiences', description: 'Requires email — lowercase format with demographics' },
+  { key: 'linkedin', label: 'LinkedIn Matched Audiences', description: 'Requires email — includes name, company, job title' },
+  { key: 'tiktok', label: 'TikTok Ads', description: 'Email or phone — includes MAID column' },
+  { key: 'raw', label: 'Raw CSV (All Fields)', description: 'All contacts — no filtering applied' },
 ]
 
 function DownloadIcon() {
@@ -62,6 +62,9 @@ function formatTimestamp(iso: string): string {
 
 export default function ExportPage() {
   const [totalContacts, setTotalContacts] = useState<number | null>(null)
+  const [withEmail, setWithEmail] = useState<number>(0)
+  const [withPhoneOnly, setWithPhoneOnly] = useState<number>(0)
+  const [noContactInfo, setNoContactInfo] = useState<number>(0)
   const [lastSynced, setLastSynced] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
@@ -73,6 +76,9 @@ export default function ExportPage() {
       .then((res) => res.json())
       .then((data) => {
         setTotalContacts(data.total_contacts ?? null)
+        setWithEmail(data.with_email ?? 0)
+        setWithPhoneOnly(data.with_phone_only ?? 0)
+        setNoContactInfo(data.no_contact_info ?? 0)
         setLastSynced(data.last_synced ?? null)
         setLoading(false)
       })
@@ -155,32 +161,44 @@ export default function ExportPage() {
             borderRadius: 12,
             padding: '16px 20px',
             marginBottom: 16,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: 12,
           }}
         >
-          <div>
-            {loading ? (
-              <span style={{ fontSize: 13, color: W30 }}>Loading...</span>
-            ) : totalContacts !== null ? (
-              <>
+          {loading ? (
+            <span style={{ fontSize: 13, color: W30 }}>Loading...</span>
+          ) : totalContacts !== null ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12 }}>
                 <span style={{ fontSize: 22, fontWeight: 700, fontFamily: 'monospace', color: Y }}>
                   {totalContacts.toLocaleString()}
                 </span>
-                <span style={{ fontSize: 13, color: W50, marginLeft: 8 }}>contacts</span>
-                {lastSynced && (
-                  <div style={{ fontSize: 11, color: W30, marginTop: 4 }}>
-                    Last synced {formatTimestamp(lastSynced)}
-                  </div>
-                )}
-              </>
-            ) : (
-              <span style={{ fontSize: 13, color: W30 }}>No contacts synced yet</span>
-            )}
-          </div>
+                <span style={{ fontSize: 13, color: W50 }}>contacts in CRM</span>
+              </div>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#00D26A' }} />
+                  <span style={{ fontSize: 13, fontFamily: 'monospace', color: W80 }}>{withEmail.toLocaleString()}</span>
+                  <span style={{ fontSize: 12, color: W50 }}>with email</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#60bae1' }} />
+                  <span style={{ fontSize: 13, fontFamily: 'monospace', color: W80 }}>{withPhoneOnly.toLocaleString()}</span>
+                  <span style={{ fontSize: 12, color: W50 }}>phone only</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: W30 }} />
+                  <span style={{ fontSize: 13, fontFamily: 'monospace', color: W80 }}>{noContactInfo.toLocaleString()}</span>
+                  <span style={{ fontSize: 12, color: W50 }}>no email or phone</span>
+                </div>
+              </div>
+              {lastSynced && (
+                <div style={{ fontSize: 11, color: W30, marginTop: 8 }}>
+                  Last synced {formatTimestamp(lastSynced)}
+                </div>
+              )}
+            </>
+          ) : (
+            <span style={{ fontSize: 13, color: W30 }}>No contacts synced yet</span>
+          )}
         </div>
 
         {/* Refresh button */}

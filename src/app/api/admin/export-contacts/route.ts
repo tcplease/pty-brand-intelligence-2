@@ -232,7 +232,7 @@ const FORMATTERS: Record<Platform, (contacts: ContactRow[]) => string> = {
 async function getStats(): Promise<NextResponse> {
   try {
     const serviceClient = createServiceClient()
-    const [{ count, error }, { data: latest }] = await Promise.all([
+    const [{ count, error }, { data: latest }, { data: allContacts }] = await Promise.all([
       serviceClient
         .from('export_contacts')
         .select('*', { count: 'exact', head: true }),
@@ -241,12 +241,30 @@ async function getStats(): Promise<NextResponse> {
         .select('synced_at')
         .order('synced_at', { ascending: false })
         .limit(1),
+      serviceClient
+        .from('export_contacts')
+        .select('email, phone'),
     ])
 
     if (error) throw error
 
+    // Count breakdown
+    let withEmail = 0
+    let withPhoneOnly = 0
+    let noContact = 0
+    for (const c of allContacts || []) {
+      const hasEmail = c.email && isPlausibleEmail(c.email.trim())
+      const hasPhone = c.phone && isPlausiblePhone(c.phone.replace(/\D/g, ''))
+      if (hasEmail) withEmail++
+      else if (hasPhone) withPhoneOnly++
+      else noContact++
+    }
+
     return NextResponse.json({
       total_contacts: count ?? 0,
+      with_email: withEmail,
+      with_phone_only: withPhoneOnly,
+      no_contact_info: noContact,
       last_synced: latest?.[0]?.synced_at ?? null,
     })
   } catch (err: unknown) {
