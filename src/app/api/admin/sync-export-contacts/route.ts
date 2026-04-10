@@ -15,6 +15,12 @@ function getColText(columnValues: Record<string, unknown>[], id: string): string
   return (col?.text as string) || null
 }
 
+/** Mirror columns use display_value instead of text */
+function getMirrorText(columnValues: Record<string, unknown>[], id: string): string | null {
+  const col = columnValues.find((c: Record<string, unknown>) => c.id === id)
+  return (col?.display_value as string) || (col?.text as string) || null
+}
+
 function getLinkedItemIds(columnValues: Record<string, unknown>[], id: string): string[] {
   const col = columnValues.find((c: Record<string, unknown>) => c.id === id)
   if (!col?.value) return []
@@ -40,7 +46,7 @@ async function fetchAllBoardItems(boardId: string): Promise<Record<string, unkno
             id
             name
             group { title }
-            column_values { id type text value }
+            column_values { id type text value ... on MirrorValue { display_value } }
           }
         }
       }
@@ -101,8 +107,8 @@ export async function POST() {
     for (const deal of dealItems) {
       const dealId = String(deal.id)
       const cols = (deal.column_values || []) as Record<string, unknown>[]
-      const mgmt = getColText(cols, MGMT_COMPANY_MIRROR)
-      const agent = getColText(cols, AGENT_COMPANY_MIRROR)
+      const mgmt = getMirrorText(cols, MGMT_COMPANY_MIRROR)
+      const agent = getMirrorText(cols, AGENT_COMPANY_MIRROR)
       if (mgmt) dealMgmtCompany.set(dealId, mgmt)
       if (agent) dealAgentCompany.set(dealId, agent)
     }
