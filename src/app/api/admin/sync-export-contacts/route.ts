@@ -2,23 +2,12 @@ import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase'
 
 const CRM_BOARD_ID = '2696356486'
-const DEAL_BOARD_ID = '2696356409'
 
-// Deal board mirror column IDs for company names
-const MGMT_COMPANY_MIRROR = 'mirror0'           // Management Company
-const AGENT_COMPANY_MIRROR = 'mirror_mkkbdz5z'  // Agent Company
-
-// ── Monday API helpers (duplicated from sync/monday to keep this self-contained) ──
+// ── Monday API helpers ──
 
 function getColText(columnValues: Record<string, unknown>[], id: string): string | null {
   const col = columnValues.find((c: Record<string, unknown>) => c.id === id)
   return (col?.text as string) || null
-}
-
-/** Mirror columns use display_value instead of text */
-function getMirrorText(columnValues: Record<string, unknown>[], id: string): string | null {
-  const col = columnValues.find((c: Record<string, unknown>) => c.id === id)
-  return (col?.display_value as string) || (col?.text as string) || null
 }
 
 function getLinkedItemIds(columnValues: Record<string, unknown>[], id: string): string[] {
@@ -46,7 +35,7 @@ async function fetchAllBoardItems(boardId: string): Promise<Record<string, unkno
             id
             name
             group { title }
-            column_values { id type text value ... on MirrorValue { display_value } }
+            column_values { id type text value }
           }
         }
       }
@@ -93,26 +82,28 @@ interface ExportContact {
 
 export async function POST() {
   try {
-    // Fetch both boards in parallel
-    const [crmItems, dealItems] = await Promise.all([
+    const serviceClient = createServiceClient()
+
+    // Fetch CRM board and company lookup from Supabase in parallel
+    const [crmItems, { data: existingContacts }] = await Promise.all([
       fetchAllBoardItems(CRM_BOARD_ID),
-      fetchAllBoardItems(DEAL_BOARD_ID),
+      serviceClient
+        .from('intel_artist_contacts')
+        .select('email, company_name')
+        .not('email', 'is', null)
+        .not('company_name', 'is', null),
     ])
     console.log(`CRM board total items: ${crmItems.length}`)
-    console.log(`Deal board total items: ${dealItems.length}`)
 
-    // Build deal ID → company name maps from the deal board mirrors
-    const dealMgmtCompany = new Map<string, string>()
-    const dealAgentCompany = new Map<string, string>()
-    for (const deal of dealItems) {
-      const dealId = String(deal.id)
-      const cols = (deal.column_values || []) as Record<string, unknown>[]
-      const mgmt = getMirrorText(cols, MGMT_COMPANY_MIRROR)
-      const agent = getMirrorText(cols, AGENT_COMPANY_MIRROR)
-      if (mgmt) dealMgmtCompany.set(dealId, mgmt)
-      if (agent) dealAgentCompany.set(dealId, agent)
+    // Build email → company name lookup from intel_artist_contacts
+    // (populated by the existing Monday sync which reads deal board mirrors)
+    const emailToCompany = new Map<string, string>()
+    for (const c of existingContacts || []) {
+      if (c.email && c.company_name) {
+        emailToCompany.set(c.email.toLowerCase().trim(), c.company_name)
+      }
     }
-    console.log(`Deal company maps: ${dealMgmtCompany.size} mgmt, ${dealAgentCompany.size} agent`)
+    console.log(`Company lookup: ${emailToCompany.size} email→company mappings`)
 
     const now = new Date().toISOString()
     const contactMap = new Map<string, ExportContact>()
@@ -141,20 +132,8 @@ export async function POST() {
         else if (gl.includes('business')) role = 'business_manager'
       }
 
-      // Look up company name from linked deal board mirrors
-      let company: string | null = null
-      if (role === 'manager' || role === 'unknown') {
-        for (const dealId of managerLinks) {
-          const c = dealMgmtCompany.get(dealId)
-          if (c) { company = c; break }
-        }
-      }
-      if (!company && (role === 'agent' || role === 'unknown')) {
-        for (const dealId of agentLinks) {
-          const c = dealAgentCompany.get(dealId)
-          if (c) { company = c; break }
-        }
-      }
+      // Look up company name from intel_artist_contacts (already synced from deal board mirrors)
+      const company = email ? emailToCompany.get(email.toLowerCase().trim()) ?? null : null
 
       // Dedupe key: email+role if email exists, otherwise name+role
       const dedupeKey = email
@@ -182,8 +161,6 @@ export async function POST() {
     console.log(`Deduplicated contacts: ${contacts.length}`)
 
     // Clear and re-insert
-    const serviceClient = createServiceClient()
-
     const { error: deleteError } = await serviceClient
       .from('export_contacts')
       .delete()
