@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase'
 
 const CRM_BOARD_ID = '2696356486'
+const DEAL_BOARD_ID = '2696356409'
+
+// Deal board mirror column IDs for company names
+const MGMT_COMPANY_MIRROR = 'mirror0'           // Management Company
+const AGENT_COMPANY_MIRROR = 'mirror_mkkbdz5z'  // Agent Company
 
 // ── Monday API helpers (duplicated from sync/monday to keep this self-contained) ──
 
@@ -82,8 +87,26 @@ interface ExportContact {
 
 export async function POST() {
   try {
-    const crmItems = await fetchAllBoardItems(CRM_BOARD_ID)
+    // Fetch both boards in parallel
+    const [crmItems, dealItems] = await Promise.all([
+      fetchAllBoardItems(CRM_BOARD_ID),
+      fetchAllBoardItems(DEAL_BOARD_ID),
+    ])
     console.log(`CRM board total items: ${crmItems.length}`)
+    console.log(`Deal board total items: ${dealItems.length}`)
+
+    // Build deal ID → company name maps from the deal board mirrors
+    const dealMgmtCompany = new Map<string, string>()
+    const dealAgentCompany = new Map<string, string>()
+    for (const deal of dealItems) {
+      const dealId = String(deal.id)
+      const cols = (deal.column_values || []) as Record<string, unknown>[]
+      const mgmt = getColText(cols, MGMT_COMPANY_MIRROR)
+      const agent = getColText(cols, AGENT_COMPANY_MIRROR)
+      if (mgmt) dealMgmtCompany.set(dealId, mgmt)
+      if (agent) dealAgentCompany.set(dealId, agent)
+    }
+    console.log(`Deal company maps: ${dealMgmtCompany.size} mgmt, ${dealAgentCompany.size} agent`)
 
     const now = new Date().toISOString()
     const contactMap = new Map<string, ExportContact>()
@@ -112,8 +135,20 @@ export async function POST() {
         else if (gl.includes('business')) role = 'business_manager'
       }
 
-      // Try to extract company from a company column if available
-      const company = getColText(cols, 'text') || getColText(cols, 'company') || null
+      // Look up company name from linked deal board mirrors
+      let company: string | null = null
+      if (role === 'manager' || role === 'unknown') {
+        for (const dealId of managerLinks) {
+          const c = dealMgmtCompany.get(dealId)
+          if (c) { company = c; break }
+        }
+      }
+      if (!company && (role === 'agent' || role === 'unknown')) {
+        for (const dealId of agentLinks) {
+          const c = dealAgentCompany.get(dealId)
+          if (c) { company = c; break }
+        }
+      }
 
       // Dedupe key: email+role if email exists, otherwise name+role
       const dedupeKey = email
