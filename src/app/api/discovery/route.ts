@@ -62,7 +62,10 @@ export async function GET(request: Request) {
       activityByArtist[a.chartmetric_id].push(a)
     }
 
-    // Filter by time period
+    // Filter by time period — artist surfaces if ANY of:
+    //   • artist row created in period (newly discovered)
+    //   • festival appearance detected in period
+    //   • activity_log signal in period (presave, cycle, festival_added, metric_spike)
     const now = new Date()
     const cutoff = new Date()
     if (period === 'week') {
@@ -70,10 +73,25 @@ export async function GET(request: Request) {
     } else {
       cutoff.setMonth(now.getMonth() - 1)
     }
+    const cutoffMs = cutoff.getTime()
+
+    const SIGNAL_EVENT_TYPES = new Set([
+      'album_presave',
+      'album_cycle_signal',
+      'festival_added',
+      'metric_spike',
+    ])
 
     const filtered = includeAll
       ? artists
-      : artists.filter(a => new Date(a.created_at) >= cutoff)
+      : artists.filter(a => {
+          if (new Date(a.created_at).getTime() >= cutoffMs) return true
+          const fests = festivalsByArtist[a.chartmetric_id] || []
+          if (fests.some(f => f.detected_at && new Date(f.detected_at).getTime() >= cutoffMs)) return true
+          const acts = activityByArtist[a.chartmetric_id] || []
+          if (acts.some(e => SIGNAL_EVENT_TYPES.has(e.event_type) && new Date(e.created_at).getTime() >= cutoffMs)) return true
+          return false
+        })
 
     // Enrich with festivals, activity, and presave signals
     const enriched = filtered.map(a => {
