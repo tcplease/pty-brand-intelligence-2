@@ -8,6 +8,8 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+export const maxDuration = 300
+
 const FUTURE_DAYS = 90
 const RECENT_DAYS = 14
 
@@ -132,12 +134,12 @@ async function runSpotifySync() {
           console.log(`Checked ${checked}/${artists.length} artists...`)
         }
 
-        await sleep(100)
+        await sleep(50)
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err)
         console.error(`✗ ${artist.name}: ${message}`)
         errors++
-        await sleep(200)
+        await sleep(100)
       }
     }
 
