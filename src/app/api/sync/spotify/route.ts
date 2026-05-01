@@ -11,7 +11,21 @@ function sleep(ms: number): Promise<void> {
 const FUTURE_DAYS = 90
 const RECENT_DAYS = 14
 
+// GET handler for Vercel Cron (auth via CRON_SECRET)
+export async function GET(request: Request) {
+  const authHeader = request.headers.get('authorization')
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  return runSpotifySync()
+}
+
+// POST handler for manual triggers
 export async function POST() {
+  return runSpotifySync()
+}
+
+async function runSpotifySync() {
   try {
     const supabase = createServiceClient()
     const token = await getSpotifyToken()
