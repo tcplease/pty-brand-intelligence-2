@@ -19,23 +19,31 @@ export async function GET(request: Request) {
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  return runSpotifySync()
+  return runSpotifySync(request)
 }
 
 // POST handler for manual triggers
-export async function POST() {
-  return runSpotifySync()
+export async function POST(request: Request) {
+  return runSpotifySync(request)
 }
 
-async function runSpotifySync() {
+async function runSpotifySync(request: Request) {
   try {
+    const url = new URL(request.url)
+    const limit = parseInt(url.searchParams.get('limit') || '0') || null
+    const offset = parseInt(url.searchParams.get('offset') || '0')
+
     const supabase = createServiceClient()
     const token = await getSpotifyToken()
 
-    const { data: artists, error: artistError } = await supabase
+    let query = supabase
       .from('intel_artists')
       .select('chartmetric_id, name, spotify_artist_id')
       .not('spotify_artist_id', 'is', null)
+      .order('chartmetric_id', { ascending: true })
+    if (limit) query = query.range(offset, offset + limit - 1)
+
+    const { data: artists, error: artistError } = await query
 
     if (artistError) throw artistError
     if (!artists || artists.length === 0) {
