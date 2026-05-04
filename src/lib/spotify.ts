@@ -61,16 +61,32 @@ interface SpotifyAlbumsResponse {
 }
 
 export async function getArtistAlbums(token: string, spotifyId: string): Promise<SpotifyAlbum[]> {
-  const res = await fetch(
-    `https://api.spotify.com/v1/artists/${spotifyId}/albums?include_groups=album,single&limit=50&market=US`,
-    {
-      headers: { 'Authorization': `Bearer ${token}` },
-    }
-  )
+  const ctrl = new AbortController()
+  const t = setTimeout(() => ctrl.abort(), 8000)
+  let res: Response
+  try {
+    res = await fetch(
+      `https://api.spotify.com/v1/artists/${spotifyId}/albums?include_groups=album,single&limit=50&market=US`,
+      {
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: ctrl.signal,
+      }
+    )
+  } catch (err) {
+    clearTimeout(t)
+    console.error(`Spotify albums fetch failed for ${spotifyId}:`, err instanceof Error ? err.message : err)
+    return []
+  }
+  clearTimeout(t)
 
   if (!res.ok) {
     if (res.status === 429) {
       const retryAfter = parseInt(res.headers.get('Retry-After') || '5')
+      // Skip on long backoffs — don't recurse, don't hang the batch
+      if (!Number.isFinite(retryAfter) || retryAfter > 10) {
+        console.warn(`Spotify 429 for ${spotifyId} with Retry-After=${retryAfter}s — skipping`)
+        return []
+      }
       console.warn(`Spotify rate limited, waiting ${retryAfter}s`)
       await sleep(retryAfter * 1000)
       return getArtistAlbums(token, spotifyId)
@@ -90,14 +106,28 @@ export async function getLatestAlbum(
   token: string,
   spotifyId: string
 ): Promise<{ name: string; release_date: string } | null> {
-  const res = await fetch(
-    `https://api.spotify.com/v1/artists/${spotifyId}/albums?include_groups=album&limit=10&market=US`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  )
+  const ctrl = new AbortController()
+  const t = setTimeout(() => ctrl.abort(), 8000)
+  let res: Response
+  try {
+    res = await fetch(
+      `https://api.spotify.com/v1/artists/${spotifyId}/albums?include_groups=album&limit=10&market=US`,
+      { headers: { Authorization: `Bearer ${token}` }, signal: ctrl.signal }
+    )
+  } catch (err) {
+    clearTimeout(t)
+    console.error(`Spotify latest album fetch failed for ${spotifyId}:`, err instanceof Error ? err.message : err)
+    return null
+  }
+  clearTimeout(t)
 
   if (!res.ok) {
     if (res.status === 429) {
       const retryAfter = parseInt(res.headers.get('Retry-After') || '5')
+      if (!Number.isFinite(retryAfter) || retryAfter > 10) {
+        console.warn(`Spotify 429 for ${spotifyId} with Retry-After=${retryAfter}s — skipping`)
+        return null
+      }
       await sleep(retryAfter * 1000)
       return getLatestAlbum(token, spotifyId)
     }
