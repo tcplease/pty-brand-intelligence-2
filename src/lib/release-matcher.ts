@@ -34,22 +34,30 @@ export function normalizeName(name: string): string {
   return s
 }
 
-/** Pre-load all artists + aliases into in-memory maps for O(1) lookup. */
+/** Pre-load all artists + aliases into in-memory maps for O(1) lookup.
+ *  Paginates artists in 1000-row pages — Supabase REST defaults to 1000, so
+ *  rosters >1000 silently truncate without explicit ranges. */
 export async function buildMatcherIndex(supabase: SupabaseClient): Promise<MatcherIndex> {
   const byName = new Map<string, number>()
   const byAlias = new Map<string, number>()
 
-  // intel_artists.name → chartmetric_id (only active discovery rows + pipeline)
-  const { data: artists, error: artistErr } = await supabase
-    .from('intel_artists')
-    .select('chartmetric_id, name')
-  if (artistErr) throw new Error(`buildMatcherIndex artists: ${artistErr.message}`)
-  for (const a of artists ?? []) {
-    if (!a.name || a.chartmetric_id == null) continue
-    const norm = normalizeName(a.name)
-    if (!norm) continue
-    // First write wins — collisions on normalized name are rare but real
-    if (!byName.has(norm)) byName.set(norm, a.chartmetric_id)
+  const PAGE = 1000
+  for (let offset = 0; ; offset += PAGE) {
+    const { data: artists, error: artistErr } = await supabase
+      .from('intel_artists')
+      .select('chartmetric_id, name')
+      .order('chartmetric_id', { ascending: true })
+      .range(offset, offset + PAGE - 1)
+    if (artistErr) throw new Error(`buildMatcherIndex artists: ${artistErr.message}`)
+    if (!artists || artists.length === 0) break
+    for (const a of artists) {
+      if (!a.name || a.chartmetric_id == null) continue
+      const norm = normalizeName(a.name)
+      if (!norm) continue
+      // First write wins — collisions on normalized name are rare but real
+      if (!byName.has(norm)) byName.set(norm, a.chartmetric_id)
+    }
+    if (artists.length < PAGE) break
   }
 
   const { data: aliases, error: aliasErr } = await supabase
