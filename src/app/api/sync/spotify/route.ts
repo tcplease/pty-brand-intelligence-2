@@ -32,6 +32,8 @@ async function runSpotifySync(request: Request) {
     const url = new URL(request.url)
     const limit = parseInt(url.searchParams.get('limit') || '0') || null
     const offset = parseInt(url.searchParams.get('offset') || '0')
+    const sleepMs = Math.max(0, parseInt(url.searchParams.get('sleep') || '50'))
+    const errSleepMs = Math.max(sleepMs * 2, 100)
 
     const supabase = createServiceClient()
     const token = await getSpotifyToken()
@@ -142,12 +144,12 @@ async function runSpotifySync(request: Request) {
           console.log(`Checked ${checked}/${artists.length} artists...`)
         }
 
-        await sleep(50)
+        await sleep(sleepMs)
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err)
         console.error(`✗ ${artist.name}: ${message}`)
         errors++
-        await sleep(100)
+        await sleep(errSleepMs)
       }
     }
 
