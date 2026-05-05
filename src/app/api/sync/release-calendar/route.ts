@@ -31,7 +31,11 @@ import { buildMatcherIndex, matchName, type MatcherIndex } from '@/lib/release-m
 
 type SourceKey = 'billboard' | 'genius_album' | 'genius_single' | 'pitchfork'
 const ALL_SOURCES: SourceKey[] = ['billboard', 'genius_album', 'genius_single', 'pitchfork']
-const DEFAULT_SOURCES: SourceKey[] = ['billboard', 'genius_album', 'genius_single', 'pitchfork']
+// genius_single is excluded: Genius's singles calendars have only the welcome
+// description annotated; the actual entry list is in the lyrics body, which
+// the API does not expose. Manual `?sources=genius_single` requests still
+// attempt it but yield 0 entries.
+const DEFAULT_SOURCES: SourceKey[] = ['billboard', 'genius_album', 'pitchfork']
 
 export const maxDuration = 300
 
