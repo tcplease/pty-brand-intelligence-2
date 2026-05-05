@@ -31,6 +31,10 @@
     {
       "path": "/api/sync/album-cycle",
       "schedule": "0 12 * * 1"
+    },
+    {
+      "path": "/api/sync/release-calendar",
+      "schedule": "0 13 * * 1"
     }
   ]
 }
