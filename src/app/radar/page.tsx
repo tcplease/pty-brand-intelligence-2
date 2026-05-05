@@ -308,7 +308,7 @@ export default function DiscoveryPage() {
   const [period, setPeriod] = useState<'week' | 'month' | 'all'>('week')
   const [search, setSearch] = useState('')
   const [stageFilter, setStageFilter] = useState('')
-  const [sortBy, setSortBy] = useState<'festivals' | 'score' | 'recent'>('festivals')
+  const [sortBy, setSortBy] = useState<'release' | 'festivals' | 'score' | 'recent'>('release')
   const [minFestivals, setMinFestivals] = useState(0)
   const [showAddLeads, setShowAddLeads] = useState(false)
   const [leadText, setLeadText] = useState('')
@@ -398,6 +398,41 @@ export default function DiscoveryPage() {
     filtered = [...filtered].sort((a, b) => (b.cm_score || 0) - (a.cm_score || 0))
   } else if (sortBy === 'recent') {
     filtered = [...filtered].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  } else if (sortBy === 'release') {
+    // Sort by nearest upcoming release first; artists with no presave fall to the bottom.
+    const now = Date.now()
+    const earliestUpcoming = (a: DiscoveryArtist): number => {
+      const presaves = a.presaves ?? []
+      let best = Infinity
+      for (const p of presaves) {
+        if (!p.event_date) continue
+        const t = new Date(p.event_date).getTime()
+        if (t >= now && t < best) best = t
+      }
+      // No upcoming release? fall back to most recent past release for soft signal,
+      // then to Infinity (no signal at all → bottom of list).
+      if (best === Infinity) {
+        let mostRecent = -Infinity
+        for (const p of presaves) {
+          if (!p.event_date) continue
+          const t = new Date(p.event_date).getTime()
+          if (t < now && t > mostRecent) mostRecent = t
+        }
+        // Past releases: rank after upcoming (offset by a year so future always wins),
+        // most-recent-past first.
+        if (mostRecent !== -Infinity) return now + 365 * 24 * 3600 * 1000 + (now - mostRecent)
+        return Number.POSITIVE_INFINITY
+      }
+      return best
+    }
+    filtered = [...filtered].sort((a, b) => {
+      const ka = earliestUpcoming(a)
+      const kb = earliestUpcoming(b)
+      if (ka !== kb) return ka - kb
+      // Tie-breaker: festival count desc, then CM score desc
+      if (a.festival_count !== b.festival_count) return b.festival_count - a.festival_count
+      return (b.cm_score || 0) - (a.cm_score || 0)
+    })
   }
 
   const stages = [...new Set(artists.map(a => a.career_stage).filter(Boolean))]
@@ -481,9 +516,10 @@ export default function DiscoveryPage() {
             <option value="4">4+ Festivals</option>
           </select>
 
-          <select value={sortBy} onChange={e => setSortBy(e.target.value as any)}
+          <select value={sortBy} onChange={e => setSortBy(e.target.value as 'release' | 'festivals' | 'score' | 'recent')}
             className="px-3 py-1.5 rounded-lg border text-sm outline-none"
             style={{ background: SURFACE2, borderColor: BORDER, color: W80 }}>
+            <option value="release">Sort: Upcoming Release</option>
             <option value="festivals">Sort: Festival Count</option>
             <option value="score">Sort: CM Score</option>
             <option value="recent">Sort: Date Added</option>
