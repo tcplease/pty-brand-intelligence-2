@@ -148,9 +148,36 @@ function getAgePct(ageGender: any[], ageCode: string): number {
 
 // ── Main sync ─────────────────────────────────────────
 // GET handler — search DB first, fall back to CM with full enrichment + storage
+// Also: ?probe=true&id=<n> makes exactly one /artist/:id call (1 credit)
+//       so we can measure per-credit cost against the account balance.
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url)
+    const probeId = url.searchParams.get('probe') === 'true' ? url.searchParams.get('id') : null
+    if (probeId) {
+      const startedAt = new Date().toISOString()
+      const token = await getCMToken()  // /api/token, not artist-billed
+      const res = await fetch(`https://api.chartmetric.com/api/artist/${probeId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const status = res.status
+      let name: string | null = null
+      try {
+        const body = await res.json()
+        name = body?.obj?.name ?? null
+      } catch { /* ignore */ }
+      return NextResponse.json({
+        probe: true,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        cm_endpoint: `/artist/${probeId}`,
+        cm_endpoint_credits_documented: 1,
+        cm_status: status,
+        artist_name: name,
+        note: 'Note any change in your CM credit balance after this single call.',
+      })
+    }
+
     const searchQuery = url.searchParams.get('search')
     if (!searchQuery) {
       return NextResponse.json({ error: 'search param required' }, { status: 400 })
