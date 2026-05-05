@@ -82,10 +82,16 @@ export async function GET(request: Request) {
       'metric_spike',
     ])
 
+    // For festival_signal source, the artist's creation IS the signal — they
+    // were just discovered via a festival lineup scrape. For 'manual' source
+    // (CRM imports, bulk calendar backfills), creation is just data entry —
+    // they need an actual signal (festival appearance, presave, etc.) to
+    // surface. This prevents bulk-import floods from drowning the feed.
     const filtered = includeAll
       ? artists
       : artists.filter(a => {
-          if (new Date(a.created_at).getTime() >= cutoffMs) return true
+          const isFestivalSourced = a.source === 'festival_signal' || a.source === 'both'
+          if (isFestivalSourced && new Date(a.created_at).getTime() >= cutoffMs) return true
           const fests = festivalsByArtist[a.chartmetric_id] || []
           if (fests.some(f => f.detected_at && new Date(f.detected_at).getTime() >= cutoffMs)) return true
           const acts = activityByArtist[a.chartmetric_id] || []
