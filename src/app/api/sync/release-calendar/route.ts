@@ -26,10 +26,15 @@ import { createServiceClient } from '@/lib/supabase'
 import { resurfaceIfHidden } from '@/lib/signals'
 import { scrapeBillboard, type CalendarRelease } from '@/lib/scrapers/billboard'
 import { scrapeGenius } from '@/lib/scrapers/genius'
+import { scrapePitchfork } from '@/lib/scrapers/pitchfork'
 import { buildMatcherIndex, matchName, type MatcherIndex } from '@/lib/release-matcher'
 
-type SourceKey = 'billboard' | 'genius_album' | 'genius_single'
-const ALL_SOURCES: SourceKey[] = ['billboard', 'genius_album', 'genius_single']
+type SourceKey = 'billboard' | 'genius_album' | 'genius_single' | 'pitchfork'
+// Default cron sources. Genius is currently blocked from Vercel IPs (Cloudflare
+// 403s the datacenter range) — it stays in ALL_SOURCES so manual `?sources=`
+// requests work, but it's excluded from the default cron run below.
+const ALL_SOURCES: SourceKey[] = ['billboard', 'genius_album', 'genius_single', 'pitchfork']
+const DEFAULT_SOURCES: SourceKey[] = ['billboard', 'pitchfork']
 
 export const maxDuration = 300
 
@@ -79,6 +84,9 @@ async function runDebug(request: Request): Promise<NextResponse> {
     } else if (source === 'genius_single') {
       const r = await scrapeGenius({ year, kind: 'single', months })
       releases = r.releases
+    } else if (source === 'pitchfork') {
+      const r = await scrapePitchfork(year)
+      releases = r.releases
     } else {
       return NextResponse.json({ error: `Unknown debug source: ${source}` }, { status: 400 })
     }
@@ -119,7 +127,7 @@ async function runSync(request: Request, opts: SyncOptions): Promise<NextRespons
     const sourcesParam = url.searchParams.get('sources')
     const sources: SourceKey[] = sourcesParam
       ? sourcesParam.split(',').map(s => s.trim() as SourceKey).filter(s => ALL_SOURCES.includes(s))
-      : ALL_SOURCES
+      : DEFAULT_SOURCES
 
     console.log(`[release-calendar] starting${opts.dryRun ? ' (dry run)' : ''} for year=${year}, sources=${sources.join(',')}`)
 
@@ -166,6 +174,19 @@ async function runSync(request: Request, opts: SyncOptions): Promise<NextRespons
         const msg = err instanceof Error ? err.message : String(err)
         sourceCounts.genius_single = { count: 0, error: msg }
         console.error('[release-calendar] genius_single scrape failed:', msg)
+      }
+    }
+
+    if (sources.includes('pitchfork')) {
+      try {
+        const r = await scrapePitchfork(year)
+        sourceCounts.pitchfork = { count: r.releases.length, error: r.fetched ? null : 'page fetch failed' }
+        allReleases = allReleases.concat(r.releases)
+        console.log(`[release-calendar] pitchfork scraped: ${r.releases.length} entries (fetched=${r.fetched})`)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        sourceCounts.pitchfork = { count: 0, error: msg }
+        console.error('[release-calendar] pitchfork scrape failed:', msg)
       }
     }
 
