@@ -130,11 +130,11 @@ function ArtistCard({
         cursor: 'pointer',
         animation: index < 16 ? `fadeIn 0.3s ease-out ${index * 0.04}s both` : 'none',
       }}
-      className="transition-all duration-200 hover:border-white/15 group h-full"
+      className="transition-all duration-200 hover:border-white/15 group h-full flex flex-col"
       onClick={() => onNavigate(artist.chartmetric_id)}
     >
       {/* Image — fixed height */}
-      <div className="relative overflow-hidden aspect-square md:aspect-auto md:h-[160px]" style={{ backgroundColor: '#2a2a2a' }}>
+      <div className="relative overflow-hidden aspect-square md:aspect-auto md:h-[160px] flex-shrink-0" style={{ backgroundColor: '#2a2a2a' }}>
         {artist.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
