@@ -34,12 +34,24 @@ export async function GET(request: Request) {
     // We use a priority order — Won > Finalizing > Negotiation > Proposal > Active > Prospect > Outbound > Lost
     // In practice: we just need to know if ALL items are Lost (hide) or if ANY are Outbound (dim).
     // Strategy: get distinct chartmetric_ids and their "best" stage per artist.
-    const { data: mondayStages, error: mondayError } = await supabase
-      .from('intel_monday_items')
-      .select('chartmetric_id, stage, last_show, sales_lead')
-      .not('chartmetric_id', 'is', null)
-
-    if (mondayError) throw mondayError
+    // Supabase REST defaults to 1000-row cap — pagination required because
+    // we have ~2k monday_items. Without this, deals on rows >1000 silently
+    // never get into stageMap, which means Lost/Fell Off artists in the
+    // truncated portion fail the visibility filter and surface on Pipeline.
+    const mondayStages: Array<{ chartmetric_id: number | null; stage: string | null; last_show: string | null; sales_lead: string | null }> = []
+    const PAGE = 1000
+    for (let off = 0; ; off += PAGE) {
+      const { data, error } = await supabase
+        .from('intel_monday_items')
+        .select('chartmetric_id, stage, last_show, sales_lead')
+        .not('chartmetric_id', 'is', null)
+        .order('chartmetric_id', { ascending: true })
+        .range(off, off + PAGE - 1)
+      if (error) throw error
+      if (!data || data.length === 0) break
+      mondayStages.push(...data)
+      if (data.length < PAGE) break
+    }
 
     // Build a map: chartmetric_id → best visible stage
     // Rules:
@@ -171,12 +183,22 @@ export async function GET(request: Request) {
         sales_leads: Array.from(stageMap.get(a.chartmetric_id)?.salesLeads ?? []),
       }))
 
-    // Add Monday-only artists (no CM record but active deals)
+    // Add Monday-only artists (no CM record but active deals).
+    // Paginate to avoid 1000-row truncation — same hazard as above.
     const HIDDEN_STAGES_SET = new Set([...HIDDEN_STAGES, 'Closed Deals (Events Completed)'])
-    const { data: mondayOnly } = await supabase
-      .from('intel_monday_items')
-      .select('artist_name, stage, sales_lead, last_show')
-      .is('chartmetric_id', null)
+    const mondayOnly: Array<{ artist_name: string | null; stage: string | null; sales_lead: string | null; last_show: string | null }> = []
+    for (let off = 0; ; off += PAGE) {
+      const { data, error } = await supabase
+        .from('intel_monday_items')
+        .select('artist_name, stage, sales_lead, last_show')
+        .is('chartmetric_id', null)
+        .order('artist_name', { ascending: true })
+        .range(off, off + PAGE - 1)
+      if (error) throw error
+      if (!data || data.length === 0) break
+      mondayOnly.push(...data)
+      if (data.length < PAGE) break
+    }
 
     // Group by artist name, pick best stage
     const mondayOnlyMap = new Map<string, { bestStage: string | null; salesLeads: Set<string>; isDimmed: boolean }>()
