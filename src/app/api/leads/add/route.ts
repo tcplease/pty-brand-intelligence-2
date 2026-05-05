@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+export const maxDuration = 300
+
 const CM_REFRESH_TOKEN = process.env.CHARTMETRIC_TOKEN!
 const CM_BASE = 'https://api.chartmetric.com/api'
 
