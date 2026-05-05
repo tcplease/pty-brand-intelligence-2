@@ -49,6 +49,7 @@ const RECENT_DAYS = 30
 
 export async function GET(request: Request) {
   const url = new URL(request.url)
+  if (url.searchParams.get('probe')) return runGeniusApiProbe(url)
   if (url.searchParams.get('debug')) return runDebug(request)
   if (url.searchParams.get('dry') === 'true') return runSync(request, { dryRun: true })
 
@@ -61,8 +62,63 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const url = new URL(request.url)
+  if (url.searchParams.get('probe')) return runGeniusApiProbe(url)
   if (url.searchParams.get('debug')) return runDebug(request)
   return runSync(request, { dryRun: url.searchParams.get('dry') === 'true' })
+}
+
+// ── Probe Genius API to map out which endpoint exposes calendar data ──
+// Usage:
+//   ?probe=search&q=2026+album+release+calendar
+//   ?probe=song&id=<song_id>&fmt=plain (or html, dom)
+//   ?probe=referents&id=<song_id>
+//   ?probe=album&id=<album_id>
+//   ?probe=album_tracks&id=<album_id>
+async function runGeniusApiProbe(url: URL): Promise<NextResponse> {
+  const token = process.env.GENIUS_ACCESS_TOKEN
+  if (!token) return NextResponse.json({ error: 'Missing GENIUS_ACCESS_TOKEN env' }, { status: 500 })
+
+  const probe = url.searchParams.get('probe') || ''
+  const id = url.searchParams.get('id')
+  const q = url.searchParams.get('q')
+  const fmt = url.searchParams.get('fmt') || 'plain'
+
+  let target: string
+  if (probe === 'search') {
+    if (!q) return NextResponse.json({ error: 'q required' }, { status: 400 })
+    target = `https://api.genius.com/search?q=${encodeURIComponent(q)}`
+  } else if (probe === 'song') {
+    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+    target = `https://api.genius.com/songs/${id}?text_format=${fmt}`
+  } else if (probe === 'referents') {
+    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+    target = `https://api.genius.com/referents?song_id=${id}&text_format=${fmt}&per_page=50`
+  } else if (probe === 'album') {
+    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+    target = `https://api.genius.com/albums/${id}?text_format=${fmt}`
+  } else if (probe === 'album_tracks') {
+    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+    target = `https://api.genius.com/albums/${id}/tracks?per_page=50&text_format=${fmt}`
+  } else {
+    return NextResponse.json({ error: `Unknown probe: ${probe}` }, { status: 400 })
+  }
+
+  const ctrl = new AbortController()
+  const t = setTimeout(() => ctrl.abort(), 20000)
+  try {
+    const res = await fetch(target, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: ctrl.signal,
+    })
+    const status = res.status
+    let body: unknown = null
+    try { body = await res.json() } catch { try { body = await res.text() } catch { body = '<unreadable>' } }
+    return NextResponse.json({ probe, target, status, body })
+  } catch (err: unknown) {
+    return NextResponse.json({ probe, target, error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+  } finally {
+    clearTimeout(t)
+  }
 }
 
 // ── Debug: scrape one source, optionally match, no DB writes ───
