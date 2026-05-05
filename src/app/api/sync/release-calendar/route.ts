@@ -1,36 +1,46 @@
 // ── Crowd-sourced release calendar sync ─────────────────────────
-// Scrapes Billboard's annual album calendar and surfaces matched
-// artists' upcoming releases as `album_presave` activity_log signals
-// so they appear on the Radar page.
+// Scrapes album/single release calendars and surfaces matched artists'
+// upcoming releases as `album_presave` activity_log signals so they
+// appear on the Radar page.
 //
-// v1: Billboard only. Genius / Pitchfork land in follow-up PRs.
+// Sources: Billboard (annual album calendar), Genius (monthly album +
+// singles calendars). Pitchfork lands in a follow-up PR.
 //
 // Routes:
 //   GET  /api/sync/release-calendar              — cron entry (CRON_SECRET auth)
 //   POST /api/sync/release-calendar              — manual trigger, no auth
-//   GET|POST /api/sync/release-calendar?debug=billboard&year=2026
+//   GET|POST /api/sync/release-calendar?debug=<source>&year=2026
 //                                                 — dry run, returns parsed
 //                                                   releases + match results
-//                                                   without DB writes
+//                                                   without DB writes.
+//                                                   <source>: billboard |
+//                                                   genius_album | genius_single
 //   GET|POST /api/sync/release-calendar?dry=true  — full pipeline minus
 //                                                   DB writes, returns counts
+//   GET|POST /api/sync/release-calendar?sources=billboard,genius_album
+//                                                 — restrict which sources to
+//                                                   scrape (default: all)
 
 import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase'
 import { resurfaceIfHidden } from '@/lib/signals'
 import { scrapeBillboard, type CalendarRelease } from '@/lib/scrapers/billboard'
+import { scrapeGenius } from '@/lib/scrapers/genius'
 import { buildMatcherIndex, matchName, type MatcherIndex } from '@/lib/release-matcher'
+
+type SourceKey = 'billboard' | 'genius_album' | 'genius_single'
+const ALL_SOURCES: SourceKey[] = ['billboard', 'genius_album', 'genius_single']
 
 export const maxDuration = 300
 
 // Window for which calendar releases get surfaced as Radar `album_presave`
-// signals. Wider than the Spotify cron's 90/14d because tour planning runs
-// 3-12 months ahead — a Q1 album drop today is still leadable lead time.
-// Future = ~12 months: catch the full year of announced releases.
-// Recent = ~6 months: include albums dropped earlier this year so we can
-// get in front of upcoming tour announcements.
+// signals. Wider FUTURE than the Spotify cron (which sees only 90d) because
+// tour planning runs 3-12 months ahead — a calendar's whole point is the
+// long-lead-time visibility Spotify lacks. RECENT stays tight: tours for
+// already-dropped albums are typically already announced, so albums older
+// than ~30d are noise.
 const FUTURE_DAYS = 365
-const RECENT_DAYS = 180
+const RECENT_DAYS = 30
 
 export async function GET(request: Request) {
   const url = new URL(request.url)
@@ -54,13 +64,21 @@ export async function POST(request: Request) {
 async function runDebug(request: Request): Promise<NextResponse> {
   try {
     const url = new URL(request.url)
-    const source = url.searchParams.get('debug') || 'billboard'
+    const source = (url.searchParams.get('debug') || 'billboard') as SourceKey
     const year = parseInt(url.searchParams.get('year') || `${new Date().getFullYear()}`, 10)
     const matchEnabled = url.searchParams.get('match') !== 'false'
+    const monthsParam = url.searchParams.get('months')
+    const months = monthsParam ? monthsParam.split(',').map(s => parseInt(s, 10)).filter(n => n >= 1 && n <= 12) : undefined
 
     let releases: CalendarRelease[] = []
     if (source === 'billboard') {
       releases = await scrapeBillboard(year)
+    } else if (source === 'genius_album') {
+      const r = await scrapeGenius({ year, kind: 'album', months })
+      releases = r.releases
+    } else if (source === 'genius_single') {
+      const r = await scrapeGenius({ year, kind: 'single', months })
+      releases = r.releases
     } else {
       return NextResponse.json({ error: `Unknown debug source: ${source}` }, { status: 400 })
     }
@@ -98,25 +116,58 @@ async function runSync(request: Request, opts: SyncOptions): Promise<NextRespons
   try {
     const url = new URL(request.url)
     const year = parseInt(url.searchParams.get('year') || `${new Date().getFullYear()}`, 10)
+    const sourcesParam = url.searchParams.get('sources')
+    const sources: SourceKey[] = sourcesParam
+      ? sourcesParam.split(',').map(s => s.trim() as SourceKey).filter(s => ALL_SOURCES.includes(s))
+      : ALL_SOURCES
 
-    console.log(`[release-calendar] starting${opts.dryRun ? ' (dry run)' : ''} for year=${year}`)
+    console.log(`[release-calendar] starting${opts.dryRun ? ' (dry run)' : ''} for year=${year}, sources=${sources.join(',')}`)
 
     const supabase = createServiceClient()
     const index = await buildMatcherIndex(supabase)
     console.log(`[release-calendar] index built: ${index.byName.size} names, ${index.byAlias.size} aliases`)
 
-    // Scrape Billboard
-    let billboard: CalendarRelease[] = []
-    let billboardError: string | null = null
-    try {
-      billboard = await scrapeBillboard(year)
-      console.log(`[release-calendar] billboard scraped: ${billboard.length} entries`)
-    } catch (err) {
-      billboardError = err instanceof Error ? err.message : String(err)
-      console.error('[release-calendar] billboard scrape failed:', billboardError)
+    const sourceCounts: Record<string, { count: number; error: string | null }> = {}
+    let allReleases: CalendarRelease[] = []
+
+    if (sources.includes('billboard')) {
+      try {
+        const billboard = await scrapeBillboard(year)
+        sourceCounts.billboard = { count: billboard.length, error: null }
+        allReleases = allReleases.concat(billboard)
+        console.log(`[release-calendar] billboard scraped: ${billboard.length} entries`)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        sourceCounts.billboard = { count: 0, error: msg }
+        console.error('[release-calendar] billboard scrape failed:', msg)
+      }
     }
 
-    const allReleases = billboard
+    if (sources.includes('genius_album')) {
+      try {
+        const r = await scrapeGenius({ year, kind: 'album' })
+        sourceCounts.genius_album = { count: r.releases.length, error: r.pagesFailed > 0 ? `${r.pagesFailed} of 12 monthly pages failed` : null }
+        allReleases = allReleases.concat(r.releases)
+        console.log(`[release-calendar] genius_album scraped: ${r.releases.length} entries (${r.pagesFetched}/${r.pagesFetched + r.pagesFailed} pages)`)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        sourceCounts.genius_album = { count: 0, error: msg }
+        console.error('[release-calendar] genius_album scrape failed:', msg)
+      }
+    }
+
+    if (sources.includes('genius_single')) {
+      try {
+        const r = await scrapeGenius({ year, kind: 'single' })
+        sourceCounts.genius_single = { count: r.releases.length, error: r.pagesFailed > 0 ? `${r.pagesFailed} of 12 monthly pages failed` : null }
+        allReleases = allReleases.concat(r.releases)
+        console.log(`[release-calendar] genius_single scraped: ${r.releases.length} entries (${r.pagesFetched}/${r.pagesFetched + r.pagesFailed} pages)`)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        sourceCounts.genius_single = { count: 0, error: msg }
+        console.error('[release-calendar] genius_single scrape failed:', msg)
+      }
+    }
 
     // Match names
     const matched: Array<CalendarRelease & { chartmetric_id: number; matched_via: 'alias' | 'exact' }> = []
@@ -137,8 +188,8 @@ async function runSync(request: Request, opts: SyncOptions): Promise<NextRespons
         success: true,
         dry_run: true,
         year,
-        billboard_count: billboard.length,
-        billboard_error: billboardError,
+        sources: sourceCounts,
+        total_scraped: allReleases.length,
         matched: matched.length,
         unmatched: unmatched.length,
         sample_matched: matched.slice(0, 10).map(m => ({
@@ -289,8 +340,8 @@ async function runSync(request: Request, opts: SyncOptions): Promise<NextRespons
     return NextResponse.json({
       success: true,
       year,
-      billboard_count: billboard.length,
-      billboard_error: billboardError,
+      sources: sourceCounts,
+      total_scraped: allReleases.length,
       matched: matched.length,
       unmatched: unmatched.length,
       calendar_rows_inserted: calendarInserted,
