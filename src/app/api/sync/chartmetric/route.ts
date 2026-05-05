@@ -256,7 +256,7 @@ export async function GET(request: Request) {
       if (brandRes.ok) {
         const brands = ((await brandRes.json())?.obj || []).filter((b: any) => b.affinity >= 1.0) // eslint-disable-line @typescript-eslint/no-explicit-any
         if (brands.length) {
-          await supabase.from('intel_artist_brand_affinities').insert(
+          await supabase.from('intel_brand_affinities').insert(
             brands.map((b: any) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
               chartmetric_id: cmId,
               brand_id: b.id || 0,
@@ -277,7 +277,7 @@ export async function GET(request: Request) {
       if (sectorRes.ok) {
         const sectors = ((await sectorRes.json())?.obj || []).filter((s: any) => s.affinity >= 1.0) // eslint-disable-line @typescript-eslint/no-explicit-any
         if (sectors.length) {
-          await supabase.from('intel_artist_sector_affinities').insert(
+          await supabase.from('intel_sector_affinities').insert(
             sectors.map((s: any) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
               chartmetric_id: cmId,
               sector_id: s.id || 0,

@@ -585,7 +585,7 @@ async function enrichNewArtists() {
 
       // Insert brand affinities
       if (brands.length) {
-        await supabase.from('intel_artist_brand_affinities').insert(
+        await supabase.from('intel_brand_affinities').insert(
           brands.map((b: any) => ({
             chartmetric_id: cmId,
             brand_id: b.id || 0,
@@ -599,7 +599,7 @@ async function enrichNewArtists() {
 
       // Insert sector affinities
       if (sectors.length) {
-        await supabase.from('intel_artist_sector_affinities').insert(
+        await supabase.from('intel_sector_affinities').insert(
           sectors.map((s: any) => ({
             chartmetric_id: cmId,
             sector_id: s.id || 0,
