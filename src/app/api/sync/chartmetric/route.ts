@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { getSpotifyToken, getLatestAlbum } from '@/lib/spotify'
 
+export const maxDuration = 300
+
 const CM_REFRESH_TOKEN = process.env.CHARTMETRIC_TOKEN!
 
 // ── Auth ──────────────────────────────────────────────
