@@ -1,32 +1,21 @@
-// ── Genius release calendar scrapers (albums + singles) ───────────
-// Source: https://genius.com/Genius-<month>-<year>-album-release-calendar-annotated
-//         https://genius.com/Genius-<month>-<year>-singles-release-calendar-annotated
+// Genius release calendar scrapers (albums + singles), via api.genius.com.
+// Direct page scraping is blocked from Vercel datacenter IPs by Cloudflare,
+// but the API is reachable with a Bearer token (GENIUS_ACCESS_TOKEN env var).
 //
-// Genius hosts the calendars as "album" pages, with the actual entries
-// rendered into a `data-lyrics-container` div on per-month sub-pages.
-// Each month follows the pattern:
-//
-//   <b>M/D</b><br/>
-//   Artist - <i>Album Title</i> - X/Y
-//   <br/>
-//   Artist 2 - <i>Album Title 2</i> - X/Y
-//   ...
-//   <b>M/D</b><br/>     ← next date
-//   ...
-//
-// X/Y is "songs transcribed / total tracks", ignored.
-//
-// Bot detection on Genius requires browser-like User-Agent + Accept headers.
+// Strategy:
+//   1. /search?q=<Month> <year> <kind> Release Calendar to find the song_id
+//      for each monthly calendar.
+//   2. /referents?song_id=<id>&per_page=50 (paginated) to pull every entry.
+//      Each referent has a `fragment` like "Artist - Album - X/Y" (X/Y is
+//      the Genius transcription counter, ignored).
+//   3. Use the song's `release_date_for_display` ("January 2026") to derive
+//      a month-level date. The API does not expose the per-day <b>M/D</b>
+//      headers from the rendered page, so all entries from one month song
+//      get YYYY-MM-01. Acceptable for Radar's window-based surfacing.
 
-import * as cheerio from 'cheerio'
 import type { CalendarRelease } from './billboard'
 
-const BROWSER_HEADERS: Record<string, string> = {
-  'User-Agent':
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-  'Accept-Language': 'en-US,en;q=0.9',
-}
+const API_BASE = 'https://api.genius.com'
 
 const MONTHS = [
   'january', 'february', 'march', 'april', 'may', 'june',
@@ -35,191 +24,200 @@ const MONTHS = [
 
 type Kind = 'album' | 'single'
 
-function urlFor(year: number, month: string, kind: Kind): string {
-  // Genius slug pattern: "Genius-january-2026-album-release-calendar-annotated"
-  // singles: "Genius-january-2026-singles-release-calendar-annotated"
-  const tail = kind === 'album' ? 'album' : 'singles'
-  return `https://genius.com/Genius-${month}-${year}-${tail}-release-calendar-annotated`
+interface GeniusSearchHit {
+  type: string
+  result?: {
+    id: number
+    full_title?: string
+    artist_names?: string
+    release_date_for_display?: string
+    api_path?: string
+  }
 }
 
-function fetchHtml(url: string, timeoutMs = 15000): Promise<string | null> {
+interface GeniusReferent {
+  id: number
+  fragment?: string
+  song_id?: number
+  range?: { content?: string }
+}
+
+function authHeaders(token: string): HeadersInit {
+  return {
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/json',
+  }
+}
+
+async function geniusGet<T>(path: string, token: string, timeoutMs = 15000): Promise<T | null> {
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), timeoutMs)
-  return fetch(url, { headers: BROWSER_HEADERS, signal: ctrl.signal })
-    .then(async res => {
-      if (!res.ok) {
-        console.warn(`[genius] ${res.status} fetching ${url}`)
-        return null
-      }
-      return res.text()
-    })
-    .catch(err => {
-      console.warn(`[genius] fetch failed for ${url}:`, err instanceof Error ? err.message : err)
+  try {
+    const res = await fetch(`${API_BASE}${path}`, { headers: authHeaders(token), signal: ctrl.signal })
+    if (!res.ok) {
+      console.warn(`[genius-api] ${res.status} ${path}`)
       return null
-    })
-    .finally(() => clearTimeout(t))
+    }
+    const json = (await res.json()) as { response?: T }
+    return json.response ?? null
+  } catch (err) {
+    console.warn(`[genius-api] fetch failed ${path}:`, err instanceof Error ? err.message : err)
+    return null
+  } finally {
+    clearTimeout(t)
+  }
 }
 
-/** Parse one Genius monthly page into CalendarRelease[]. */
-export function parseGeniusMonth(
-  html: string,
-  monthIdx: number,                     // 1-12
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+/** Search for a calendar song and return its id + display date. */
+async function findCalendarSong(
   year: number,
+  month: typeof MONTHS[number],
   kind: Kind,
-  pageUrl: string,
-): CalendarRelease[] {
-  const $ = cheerio.load(html)
-  const releases: CalendarRelease[] = []
-  const source = kind === 'album' ? 'genius_album' : 'genius_single'
-
-  // Each Lyrics__Container holds a chunk of the page content. There can be
-  // multiple containers on the page; iterate all and walk their children
-  // sequentially so we maintain h3/<b> → entry adjacency.
-  const containers = $('[data-lyrics-container="true"]').toArray()
-  if (containers.length === 0) return releases
-
-  let currentDate: string | null = null
-
-  // Walk every Lyrics container in order; treat them as one logical stream.
-  for (const c of containers) {
-    const childNodes = $(c).contents().toArray()
-    let pendingText = ''  // accumulate text between elements (catches plain "Artist - <i>Album</i>" lines)
-
-    const flushEntry = (rawText: string, italicText: string | null) => {
-      if (!italicText) return
-      const parsed = parseEntry(rawText, italicText)
-      if (!parsed || !currentDate) return
-      releases.push({
-        source,
-        source_url: pageUrl,
-        artist_name_raw: parsed.artist,
-        album_name: parsed.album,
-        release_date: currentDate,
-        release_type: kind,
-        raw_payload: { month: MONTHS[monthIdx - 1], counter: parsed.counter, raw: rawText },
-      })
-    }
-
-    for (let i = 0; i < childNodes.length; i++) {
-      const node = childNodes[i] as { type?: string; tagName?: string; name?: string }
-      const tag = node.name
-
-      if (tag === 'b') {
-        // Date header — finalize any pending text first
-        if (pendingText.trim()) {
-          // Pending text without an <i> tag → plain entry (no annotation link)
-          // We leave plain-only entries on the floor in v1; nearly all entries
-          // are wrapped in <a><span> so the loss is negligible.
-          pendingText = ''
-        }
-        const dateText = $(node as never).text().trim()
-        currentDate = parseGeniusDate(dateText, monthIdx, year)
-      } else if (tag === 'a') {
-        // Anchor wraps span with "Artist - <i>Album</i> - X/Y"
-        const $a = $(node as never)
-        const span = $a.find('span').first()
-        if (!span.length) continue
-        const italicText = span.find('i').first().text().trim() || null
-        const rawText = span.text().trim()
-        flushEntry(rawText, italicText)
-        pendingText = ''
-      } else if (tag === 'br') {
-        // Boundary; flush pending plain text if it has an <i>
-        pendingText = ''
-      } else if (!tag) {
-        // Text node — accumulate
-        const text = $(node as never).text()
-        if (text) pendingText += text
-      } else {
-        // Other tags: capture text recursively
-        const text = $(node as never).text()
-        if (text) pendingText += ' ' + text
+  token: string,
+): Promise<{ id: number; release_date_for_display: string | null } | null> {
+  const noun = kind === 'album' ? 'Album' : 'Singles'
+  const q = `${capitalize(month)} ${year} ${noun} Release Calendar`
+  const r = await geniusGet<{ hits: GeniusSearchHit[] }>(
+    `/search?q=${encodeURIComponent(q)}`,
+    token,
+  )
+  if (!r?.hits) return null
+  for (const hit of r.hits) {
+    if (hit.type !== 'song') continue
+    const result = hit.result
+    if (!result?.id) continue
+    const title = (result.full_title ?? '').toLowerCase()
+    const artistNames = (result.artist_names ?? '').toLowerCase()
+    const matchesMonth = title.includes(month)
+    const matchesYear = title.includes(String(year))
+    const matchesKind = kind === 'album'
+      ? (title.includes('album') && !title.includes('singles'))
+      : title.includes('singles')
+    const matchesCalendar = title.includes('release calendar')
+    const byGenius = artistNames === 'genius' || title.includes('by genius')
+    if (matchesMonth && matchesYear && matchesKind && matchesCalendar && byGenius) {
+      return {
+        id: result.id,
+        release_date_for_display: result.release_date_for_display ?? null,
       }
     }
   }
-
-  return releases
+  return null
 }
 
-/** Parse "Artist - Album - X/Y" → {artist, album, counter}. */
-export function parseEntry(
-  rawText: string,
-  italicText: string,
-): { artist: string; album: string; counter: string | null } | null {
-  if (!italicText) return null
-  // Find the italic substring within the raw text. Artist precedes it,
-  // counter follows it.
-  const albumIdx = rawText.indexOf(italicText)
-  if (albumIdx === -1) return null
-  let artist = rawText.slice(0, albumIdx).trim()
-  // Trim trailing " - " or "- " or "—"
-  artist = artist.replace(/\s*[-—]\s*$/, '').trim()
-  if (!artist) return null
-
-  const after = rawText.slice(albumIdx + italicText.length).trim()
-  // Counter format: "- 7/7" or "- 0/17"
-  const counterMatch = after.match(/^[-—]\s*(\d+\/\d+)\s*$/)
-  const counter = counterMatch ? counterMatch[1] : null
-
-  return { artist, album: italicText, counter }
+/** Pull all referents for a song, paginated until exhausted. */
+async function fetchAllReferents(songId: number, token: string): Promise<GeniusReferent[]> {
+  const out: GeniusReferent[] = []
+  let page = 1
+  while (true) {
+    const r = await geniusGet<{ referents: GeniusReferent[] }>(
+      `/referents?song_id=${songId}&per_page=50&page=${page}&text_format=plain`,
+      token,
+    )
+    const items = r?.referents ?? []
+    if (items.length === 0) break
+    out.push(...items)
+    if (items.length < 50) break
+    page++
+    if (page > 20) break // safety cap
+    await sleep(200)
+  }
+  return out
 }
 
-/** "1/1" → "2026-01-01"; "1/16" → "2026-01-16". monthIdx is the page month. */
-export function parseGeniusDate(text: string, monthIdx: number, year: number): string | null {
-  const cleaned = text.trim().replace(/[:\s]+$/, '')
-  // Format: "M/D" or "MM/DD"
-  const m = cleaned.match(/^(\d{1,2})\/(\d{1,2})$/)
-  if (!m) return null
-  const month = parseInt(m[1], 10)
-  const day = parseInt(m[2], 10)
-  if (!month || !day || month < 1 || month > 12 || day < 1 || day > 31) return null
-  // If the date doesn't match the page's month, ignore (defensive — Genius
-  // sometimes has cross-month entries with different formats).
-  if (month !== monthIdx) return null
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+/** Parse "Artist - Album - X/Y" fragment text. */
+export function parseReferentFragment(fragment: string): { artist: string; album: string } | null {
+  if (!fragment) return null
+  // Strip trailing " - X/Y" counter
+  const stripped = fragment.replace(/\s+[-—]\s+\d+\/\d+\s*$/, '').trim()
+  // Split on " - " or " — " (first segment is artist, rest is album).
+  const parts = stripped.split(/\s+[-—]\s+/)
+  if (parts.length < 2) return null
+  const artist = parts[0].trim()
+  const album = parts.slice(1).join(' - ').trim()
+  if (!artist || !album) return null
+  return { artist, album }
+}
+
+/** "January 2026" -> "2026-01-01". Falls back to (year, monthIdx) on parse fail. */
+function displayMonthToIsoDate(display: string | null, year: number, monthIdx: number): string {
+  if (display) {
+    const m = display.match(/^([A-Za-z]+)\s+(\d{4})$/)
+    if (m) {
+      const monthName = m[1].toLowerCase()
+      const yr = parseInt(m[2], 10)
+      const idx = MONTHS.indexOf(monthName as typeof MONTHS[number]) + 1
+      if (idx > 0 && yr) return `${yr}-${String(idx).padStart(2, '0')}-01`
+    }
+  }
+  return `${year}-${String(monthIdx).padStart(2, '0')}-01`
 }
 
 interface ScrapeOptions {
   year: number
   kind: Kind
-  /** Optional throttle between monthly fetches in ms. Genius is bot-sensitive. */
-  pageDelayMs?: number
-  /** Limit which months to fetch (default: all 12). */
+  /** Optional: limit to specific month indices 1-12. */
   months?: number[]
 }
 
-/** Top-level: fetch + parse all 12 monthly pages for one year. */
+function sleep(ms: number): Promise<void> {
+  return new Promise(r => setTimeout(r, ms))
+}
+
+/** Top-level: API-driven scrape across the 12 monthly calendar songs. */
 export async function scrapeGenius(opts: ScrapeOptions): Promise<{
   releases: CalendarRelease[]
   pagesFetched: number
   pagesFailed: number
 }> {
-  const months = opts.months ?? Array.from({ length: 12 }, (_, i) => i + 1)
-  const delay = opts.pageDelayMs ?? 800
+  const token = process.env.GENIUS_ACCESS_TOKEN
+  if (!token) {
+    console.warn('[genius-api] missing GENIUS_ACCESS_TOKEN — returning 0 entries')
+    return { releases: [], pagesFetched: 0, pagesFailed: 12 }
+  }
+
+  const monthIndices = opts.months ?? Array.from({ length: 12 }, (_, i) => i + 1)
+  const source = opts.kind === 'album' ? 'genius_album' : 'genius_single'
   const all: CalendarRelease[] = []
   let pagesFetched = 0
   let pagesFailed = 0
 
-  for (const monthIdx of months) {
+  for (const monthIdx of monthIndices) {
     const monthName = MONTHS[monthIdx - 1]
-    const url = urlFor(opts.year, monthName, opts.kind)
-    const html = await fetchHtml(url)
-    if (html === null) {
+    const song = await findCalendarSong(opts.year, monthName, opts.kind, token)
+    if (!song) {
       pagesFailed++
-    } else {
-      pagesFetched++
-      try {
-        const rels = parseGeniusMonth(html, monthIdx, opts.year, opts.kind, url)
-        all.push(...rels)
-      } catch (err) {
-        console.warn(`[genius] parse failed for ${url}:`, err instanceof Error ? err.message : err)
-        pagesFailed++
-      }
+      continue
     }
-    // Throttle between requests so Genius doesn't 429
-    if (delay > 0 && monthIdx !== months[months.length - 1]) {
-      await new Promise(r => setTimeout(r, delay))
+    pagesFetched++
+    const isoDate = displayMonthToIsoDate(song.release_date_for_display, opts.year, monthIdx)
+    const sourceUrl = `https://genius.com/Genius-${monthName}-${opts.year}-${opts.kind === 'album' ? 'album' : 'singles'}-release-calendar-annotated`
+
+    const referents = await fetchAllReferents(song.id, token)
+    for (const ref of referents) {
+      const fragment = ref.fragment ?? ref.range?.content ?? ''
+      const parsed = parseReferentFragment(fragment)
+      if (!parsed) continue
+      all.push({
+        source,
+        source_url: sourceUrl,
+        artist_name_raw: parsed.artist,
+        album_name: parsed.album,
+        release_date: isoDate,
+        release_type: opts.kind,
+        raw_payload: {
+          month: monthName,
+          song_id: song.id,
+          referent_id: ref.id,
+          fragment,
+        },
+      })
     }
+    await sleep(150)
   }
 
   return { releases: all, pagesFetched, pagesFailed }

@@ -30,11 +30,8 @@ import { scrapePitchfork } from '@/lib/scrapers/pitchfork'
 import { buildMatcherIndex, matchName, type MatcherIndex } from '@/lib/release-matcher'
 
 type SourceKey = 'billboard' | 'genius_album' | 'genius_single' | 'pitchfork'
-// Default cron sources. Genius is currently blocked from Vercel IPs (Cloudflare
-// 403s the datacenter range) — it stays in ALL_SOURCES so manual `?sources=`
-// requests work, but it's excluded from the default cron run below.
 const ALL_SOURCES: SourceKey[] = ['billboard', 'genius_album', 'genius_single', 'pitchfork']
-const DEFAULT_SOURCES: SourceKey[] = ['billboard', 'pitchfork']
+const DEFAULT_SOURCES: SourceKey[] = ['billboard', 'genius_album', 'genius_single', 'pitchfork']
 
 export const maxDuration = 300
 
