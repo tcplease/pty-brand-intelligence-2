@@ -181,6 +181,7 @@ async function runSync(request: Request, opts: SyncOptions): Promise<NextRespons
 
     let calendarInserted = 0
     let calendarErrors = 0
+    let firstUpsertError: { message: string; details: string | null; hint: string | null; code: string | null } | null = null
     if (calendarRows.length > 0) {
       // Insert in chunks of 500 to keep request size reasonable
       for (let i = 0; i < calendarRows.length; i += 500) {
@@ -189,10 +190,26 @@ async function runSync(request: Request, opts: SyncOptions): Promise<NextRespons
           .from('release_calendar')
           .upsert(chunk, {
             onConflict: 'source,source_url,artist_name_raw,album_name',
-            ignoreDuplicates: false,
+            ignoreDuplicates: true,
           })
         if (error) {
-          console.error('[release-calendar] upsert error:', error.message)
+          console.error(
+            '[release-calendar] upsert error:',
+            JSON.stringify({
+              message: error.message,
+              details: error.details,
+              hint: error.hint,
+              code: error.code,
+            }),
+          )
+          if (!firstUpsertError) {
+            firstUpsertError = {
+              message: error.message,
+              details: error.details ?? null,
+              hint: error.hint ?? null,
+              code: error.code ?? null,
+            }
+          }
           calendarErrors += chunk.length
         } else {
           calendarInserted += chunk.length
@@ -272,6 +289,7 @@ async function runSync(request: Request, opts: SyncOptions): Promise<NextRespons
       unmatched: unmatched.length,
       calendar_rows_inserted: calendarInserted,
       calendar_errors: calendarErrors,
+      first_upsert_error: firstUpsertError,
       in_window: inWindow.length,
       presaves_inserted: presavesInserted,
       presave_errors: presaveErrors,
