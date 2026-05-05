@@ -38,27 +38,29 @@ export async function POST(request: Request) {
 async function runDebugDump(spotifyId: string) {
   try {
     const token = await getSpotifyToken()
-    const albums = await getArtistAlbums(token, spotifyId)
-    const today = new Date()
-    const futureLimit = new Date(today); futureLimit.setDate(futureLimit.getDate() + FUTURE_DAYS)
-    const recentLimit = new Date(today); recentLimit.setDate(recentLimit.getDate() - RECENT_DAYS)
-    const annotated = albums.map(a => {
-      const rd = new Date(a.release_date)
-      const inFuture = rd > today && rd <= futureLimit
-      const inRecent = rd >= recentLimit && rd <= today
-      return {
-        id: a.id, name: a.name, type: a.album_type,
-        release_date: a.release_date, precision: a.release_date_precision,
-        in_window: (inFuture || inRecent) && a.album_type !== 'compilation' && a.release_date_precision === 'day',
-        match_reason: inFuture ? 'future' : inRecent ? 'recent' : 'out-of-window',
-      }
+    // Call Spotify raw — bypass getArtistAlbums silent-error paths
+    const url = `https://api.spotify.com/v1/artists/${spotifyId}/albums?include_groups=album,single&limit=50&market=US`
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
     })
+    const status = res.status
+    const headers = {
+      'retry-after': res.headers.get('retry-after'),
+      'content-type': res.headers.get('content-type'),
+    }
+    let body: unknown = null
+    try {
+      body = await res.json()
+    } catch {
+      try { body = await res.text() } catch { body = '<unreadable>' }
+    }
     return NextResponse.json({
       spotify_id: spotifyId,
-      total_albums: albums.length,
-      today: today.toISOString().split('T')[0],
-      window: { recent: recentLimit.toISOString().split('T')[0], future: futureLimit.toISOString().split('T')[0] },
-      albums: annotated,
+      url,
+      status,
+      headers,
+      body,
+      token_prefix: token.slice(0, 12) + '...',
     })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
