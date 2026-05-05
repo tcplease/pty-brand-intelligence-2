@@ -73,8 +73,8 @@ async function runSpotifySync(request: Request) {
     const url = new URL(request.url)
     const limit = parseInt(url.searchParams.get('limit') || '0') || null
     const offset = parseInt(url.searchParams.get('offset') || '0')
-    const sleepMs = Math.max(0, parseInt(url.searchParams.get('sleep') || '50'))
-    const errSleepMs = Math.max(sleepMs * 2, 100)
+    const sleepMs = Math.max(0, parseInt(url.searchParams.get('sleep') || '400'))
+    const errSleepMs = Math.max(sleepMs * 2, 800)
 
     const supabase = createServiceClient()
     const token = await getSpotifyToken()
