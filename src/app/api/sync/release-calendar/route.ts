@@ -23,8 +23,14 @@ import { buildMatcherIndex, matchName, type MatcherIndex } from '@/lib/release-m
 
 export const maxDuration = 300
 
-const FUTURE_DAYS = 90
-const RECENT_DAYS = 14
+// Window for which calendar releases get surfaced as Radar `album_presave`
+// signals. Wider than the Spotify cron's 90/14d because tour planning runs
+// 3-12 months ahead — a Q1 album drop today is still leadable lead time.
+// Future = ~12 months: catch the full year of announced releases.
+// Recent = ~6 months: include albums dropped earlier this year so we can
+// get in front of upcoming tour announcements.
+const FUTURE_DAYS = 365
+const RECENT_DAYS = 180
 
 export async function GET(request: Request) {
   const url = new URL(request.url)
