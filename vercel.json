@@ -13,8 +13,20 @@
       "schedule": "7 19 * * *"
     },
     {
-      "path": "/api/sync/spotify",
-      "schedule": "0 12 * * 2,5"
+      "path": "/api/sync/spotify?limit=600&offset=0",
+      "schedule": "0 12 * * 2"
+    },
+    {
+      "path": "/api/sync/spotify?limit=600&offset=600",
+      "schedule": "30 12 * * 2"
+    },
+    {
+      "path": "/api/sync/spotify?limit=600&offset=0",
+      "schedule": "0 12 * * 5"
+    },
+    {
+      "path": "/api/sync/spotify?limit=600&offset=600",
+      "schedule": "30 12 * * 5"
     },
     {
       "path": "/api/sync/album-cycle",
