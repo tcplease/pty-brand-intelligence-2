@@ -14,7 +14,12 @@ const FUTURE_DAYS = 90
 const RECENT_DAYS = 14
 
 // GET handler for Vercel Cron (auth via CRON_SECRET)
+// Also supports ?debug=<spotify_id> to dump raw Spotify albums response
 export async function GET(request: Request) {
+  const url = new URL(request.url)
+  const debug = url.searchParams.get('debug')
+  if (debug) return runDebugDump(debug)
+
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -24,7 +29,41 @@ export async function GET(request: Request) {
 
 // POST handler for manual triggers
 export async function POST(request: Request) {
+  const url = new URL(request.url)
+  const debug = url.searchParams.get('debug')
+  if (debug) return runDebugDump(debug)
   return runSpotifySync(request)
+}
+
+async function runDebugDump(spotifyId: string) {
+  try {
+    const token = await getSpotifyToken()
+    const albums = await getArtistAlbums(token, spotifyId)
+    const today = new Date()
+    const futureLimit = new Date(today); futureLimit.setDate(futureLimit.getDate() + FUTURE_DAYS)
+    const recentLimit = new Date(today); recentLimit.setDate(recentLimit.getDate() - RECENT_DAYS)
+    const annotated = albums.map(a => {
+      const rd = new Date(a.release_date)
+      const inFuture = rd > today && rd <= futureLimit
+      const inRecent = rd >= recentLimit && rd <= today
+      return {
+        id: a.id, name: a.name, type: a.album_type,
+        release_date: a.release_date, precision: a.release_date_precision,
+        in_window: (inFuture || inRecent) && a.album_type !== 'compilation' && a.release_date_precision === 'day',
+        match_reason: inFuture ? 'future' : inRecent ? 'recent' : 'out-of-window',
+      }
+    })
+    return NextResponse.json({
+      spotify_id: spotifyId,
+      total_albums: albums.length,
+      today: today.toISOString().split('T')[0],
+      window: { recent: recentLimit.toISOString().split('T')[0], future: futureLimit.toISOString().split('T')[0] },
+      albums: annotated,
+    })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 }
 
 async function runSpotifySync(request: Request) {
