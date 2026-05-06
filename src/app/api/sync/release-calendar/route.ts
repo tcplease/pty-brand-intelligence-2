@@ -27,7 +27,7 @@ import { resurfaceIfHidden } from '@/lib/signals'
 import { scrapeBillboard, type CalendarRelease } from '@/lib/scrapers/billboard'
 import { scrapeGenius } from '@/lib/scrapers/genius'
 import { scrapePitchfork } from '@/lib/scrapers/pitchfork'
-import { buildMatcherIndex, matchName, type MatcherIndex } from '@/lib/release-matcher'
+import { buildMatcherIndex, matchName, normalizeName, type MatcherIndex } from '@/lib/release-matcher'
 
 type SourceKey = 'billboard' | 'genius_album' | 'genius_single' | 'pitchfork'
 const ALL_SOURCES: SourceKey[] = ['billboard', 'genius_album', 'genius_single', 'pitchfork']
@@ -185,6 +185,12 @@ async function runSync(request: Request, opts: SyncOptions): Promise<NextRespons
     const sources: SourceKey[] = sourcesParam
       ? sourcesParam.split(',').map(s => s.trim() as SourceKey).filter(s => ALL_SOURCES.includes(s))
       : DEFAULT_SOURCES
+    // Auto-enrich rule (CLAUDE.md "be smart about CM costs"): only auto-import
+    // unmatched calendar artists if their release_date falls in the surfacing
+    // window. Caps at N per run so a flood of new entries can't blow the
+    // CM budget. Disable with ?auto_enrich=false. Tweak with ?auto_enrich_limit=N.
+    const autoEnrich = url.searchParams.get('auto_enrich') !== 'false'
+    const autoEnrichLimit = Math.max(0, parseInt(url.searchParams.get('auto_enrich_limit') || '25'))
 
     console.log(`[release-calendar] starting${opts.dryRun ? ' (dry run)' : ''} for year=${year}, sources=${sources.join(',')}`)
 
@@ -247,18 +253,113 @@ async function runSync(request: Request, opts: SyncOptions): Promise<NextRespons
       }
     }
 
-    // Match names
-    const matched: Array<CalendarRelease & { chartmetric_id: number; matched_via: 'alias' | 'exact' }> = []
-    const unmatched: CalendarRelease[] = []
-    for (const r of allReleases) {
-      const m = matchName(r.artist_name_raw, index)
-      if (m.chartmetric_id != null && m.via != null) {
-        matched.push({ ...r, chartmetric_id: m.chartmetric_id, matched_via: m.via })
-      } else {
-        unmatched.push(r)
+    // First match pass against existing roster
+    let matched: Array<CalendarRelease & { chartmetric_id: number; matched_via: 'alias' | 'exact' }> = []
+    let unmatched: CalendarRelease[] = []
+    const matchPass = (releases: CalendarRelease[]) => {
+      const m: typeof matched = []
+      const u: CalendarRelease[] = []
+      for (const r of releases) {
+        const hit = matchName(r.artist_name_raw, index)
+        if (hit.chartmetric_id != null && hit.via != null) {
+          m.push({ ...r, chartmetric_id: hit.chartmetric_id, matched_via: hit.via })
+        } else {
+          u.push(r)
+        }
+      }
+      return { m, u }
+    }
+    {
+      const r = matchPass(allReleases)
+      matched = r.m
+      unmatched = r.u
+    }
+    console.log(`[release-calendar] first pass: matched=${matched.length}, unmatched=${unmatched.length}`)
+
+    // ── Auto-enrich rule ─────────────────────────────────────────
+    // Only enrich unmatched artists whose release falls in the surfacing
+    // window (today − RECENT_DAYS to today + FUTURE_DAYS). Cap to keep CM
+    // costs predictable. Cross-source mentions get priority.
+    let autoEnriched = 0
+    let autoEnrichSkipped = 0
+    let autoEnrichFailed = 0
+    if (!opts.dryRun && autoEnrich && autoEnrichLimit > 0 && unmatched.length > 0) {
+      const today = new Date()
+      const futureLimit = new Date(today); futureLimit.setDate(futureLimit.getDate() + FUTURE_DAYS)
+      const recentLimit = new Date(today); recentLimit.setDate(recentLimit.getDate() - RECENT_DAYS)
+
+      // Group by normalized name → track distinct sources for priority
+      const byName = new Map<string, { displayName: string; sources: Set<string>; nearestDate: number }>()
+      for (const u of unmatched) {
+        if (!u.release_date) continue
+        const rd = new Date(u.release_date).getTime()
+        if (rd < recentLimit.getTime() || rd > futureLimit.getTime()) continue
+        const norm = normalizeName(u.artist_name_raw)
+        if (!norm) continue
+        const existing = byName.get(norm)
+        if (existing) {
+          existing.sources.add(u.source)
+          if (rd < existing.nearestDate) existing.nearestDate = rd
+        } else {
+          byName.set(norm, { displayName: u.artist_name_raw, sources: new Set([u.source]), nearestDate: rd })
+        }
+      }
+
+      // Sort: cross-source first, then earliest upcoming release
+      const candidates = [...byName.values()].sort((a, b) => {
+        if (b.sources.size !== a.sources.size) return b.sources.size - a.sources.size
+        return a.nearestDate - b.nearestDate
+      }).slice(0, autoEnrichLimit)
+
+      autoEnrichSkipped = byName.size - candidates.length
+      console.log(`[release-calendar] auto-enrich: ${candidates.length} of ${byName.size} in-window candidates (cap=${autoEnrichLimit})`)
+
+      // Resolve our own origin (Vercel sets VERCEL_URL, fall back to request)
+      const origin = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : new URL(request.url).origin
+      for (const c of candidates) {
+        try {
+          const res = await fetch(`${origin}/api/sync/chartmetric?search=${encodeURIComponent(c.displayName)}`, {
+            // 30s timeout — chartmetric search-and-enrich does ~9 CM calls
+            signal: AbortSignal.timeout(30000),
+          })
+          if (!res.ok) {
+            autoEnrichFailed++
+            continue
+          }
+          const data = await res.json() as { chartmetric_id?: number; name?: string; error?: string }
+          if (!data.chartmetric_id) {
+            autoEnrichFailed++
+            continue
+          }
+          // The GET handler creates new artists with discovery_status='unlisted'.
+          // Flip in-window calendar-imports to 'new' so they show on Radar.
+          await supabase
+            .from('intel_artists')
+            .update({ discovery_status: 'new' })
+            .eq('chartmetric_id', data.chartmetric_id)
+            .eq('discovery_status', 'unlisted')
+          // Add to in-memory matcher index so the re-match below picks them up
+          const norm = normalizeName(data.name || c.displayName)
+          if (norm && !index.byName.has(norm)) {
+            index.byName.set(norm, data.chartmetric_id)
+          }
+          autoEnriched++
+          await new Promise(r => setTimeout(r, 400)) // rate-limit pacing
+        } catch (err) {
+          autoEnrichFailed++
+          console.warn('[release-calendar] auto-enrich failed for', c.displayName, err instanceof Error ? err.message : err)
+        }
+      }
+      console.log(`[release-calendar] auto-enrich done: ok=${autoEnriched} failed=${autoEnrichFailed} skipped=${autoEnrichSkipped}`)
+
+      // Re-match unmatched against expanded index
+      if (autoEnriched > 0) {
+        const r = matchPass(unmatched)
+        matched = matched.concat(r.m)
+        unmatched = r.u
+        console.log(`[release-calendar] after auto-enrich re-match: matched=${matched.length}, unmatched=${unmatched.length}`)
       }
     }
-    console.log(`[release-calendar] matched=${matched.length}, unmatched=${unmatched.length}`)
 
     // Dry run: stop here
     if (opts.dryRun) {
@@ -422,6 +523,9 @@ async function runSync(request: Request, opts: SyncOptions): Promise<NextRespons
       total_scraped: allReleases.length,
       matched: matched.length,
       unmatched: unmatched.length,
+      auto_enriched: autoEnriched,
+      auto_enrich_failed: autoEnrichFailed,
+      auto_enrich_skipped_over_cap: autoEnrichSkipped,
       calendar_rows_inserted: calendarInserted,
       calendar_errors: calendarErrors,
       first_upsert_error: firstUpsertError,
