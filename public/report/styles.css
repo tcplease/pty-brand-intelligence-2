@@ -1,0 +1,304 @@
+/* ===========================================================================
+   PTY ARTIST INTELLIGENCE REPORT — styles
+   Print-first. Letter (8.5×11in @96dpi = 816×1056px). White background.
+   Brand: Please & Thank You 2026 guidelines.
+   ======================================================================== */
+
+:root{
+  /* Brand core */
+  --ink:#1B1B1B;            /* Stage Black  */
+  --paper:#ffffff;          /* White        */
+  --yellow:#f9d40a;         /* Electric Yellow */
+  --blue:#345d83;           /* Backstage Blue */
+  --blue-lt:#4ea0ce;
+  --red:#C3202E;            /* Velvet Rope  */
+  --pink:#ec989c;           /* Velvet Rope 200 */
+
+  /* Neutrals (warm white / graphite ramp) */
+  --warm-100:#faf9f7;
+  --warm-200:#f5f4f2;
+  --warm-300:#edecea;
+  --line:#e0ddd8;
+  --line-soft:#eceae6;
+  --g-400:#bbbbb9;
+  --g-500:#9c9b99;
+  --g-600:#737271;
+  --g-700:#54534f;
+
+  --accent:var(--yellow);   /* tweakable */
+
+  /* Career-stage coding (mirrors the app, tuned for print legibility) */
+  --st-legendary:#C3202E;
+  --st-superstar:#C2410C;
+  --st-mainstream:#6c6c6c;
+  --st-midlevel:#0F766E;
+  --st-developing:#345d83;
+  --st-prospect:#15803D;
+
+  --f-display:'Anton', 'Archivo', sans-serif;       /* condensed caps stand-in for RST Reactor Cnd */
+  --f-head:'Archivo', sans-serif;                   /* extended-feel section heads */
+  --f-body:'Work Sans', sans-serif;
+
+  /* Sheet geometry */
+  --sheet-w:816px;
+  --sheet-h:1056px;
+  --pad-x:48px;
+  --pad-y:46px;
+}
+
+*{ box-sizing:border-box; }
+html,body{ margin:0; padding:0; }
+body{
+  font-family:var(--f-body);
+  color:var(--ink);
+  background:#54534f;            /* desk behind the sheets, screen only */
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  -webkit-print-color-adjust:exact;
+  print-color-adjust:exact;
+}
+
+/* ---- screen scaffolding ---------------------------------------------- */
+#doc{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:26px;
+  padding:34px 16px 80px;
+}
+.toolbar{
+  position:fixed; top:16px; right:18px; z-index:50;
+  display:flex; gap:8px; align-items:center;
+}
+.toolbar button{
+  font-family:var(--f-head); font-weight:700; font-size:11px; white-space:nowrap;
+  letter-spacing:.14em; text-transform:uppercase;
+  border:none; cursor:pointer; padding:11px 16px; border-radius:2px;
+  background:var(--yellow); color:var(--ink);
+  box-shadow:0 2px 0 rgba(0,0,0,.35);
+}
+.toolbar button.ghost{ background:#2a2a2a; color:#f5f4f2; box-shadow:0 2px 0 rgba(0,0,0,.35); }
+.toolbar button.ghost[aria-pressed="true"]{ background:var(--yellow); color:var(--ink); }
+.toolbar .seg{ display:flex; gap:2px; background:#2a2a2a; padding:3px; border-radius:3px; }
+.toolbar .seg button{ box-shadow:none; background:transparent; color:#cfcecb; padding:8px 12px; }
+.toolbar .seg button[aria-pressed="true"]{ background:var(--yellow); color:var(--ink); }
+.toolbar button:active{ transform:translateY(1px); box-shadow:none; }
+
+/* ---- the sheet ------------------------------------------------------- */
+.sheet{
+  width:var(--sheet-w); height:var(--sheet-h);
+  background:var(--paper);
+  position:relative; overflow:hidden;
+  box-shadow:0 18px 50px rgba(0,0,0,.45);
+  display:flex; flex-direction:column;
+  padding:var(--pad-y) var(--pad-x);
+}
+.sheet-body{ flex:1 1 auto; overflow:hidden; min-height:0; }
+
+/* ---- running header / footer (every page) ---------------------------- */
+.runhead{
+  display:flex; align-items:flex-end; justify-content:space-between;
+  padding-bottom:9px; margin-bottom:14px;
+  border-bottom:1.5px solid var(--ink);
+}
+.runhead .rh-left{ display:flex; align-items:center; gap:9px; }
+.runhead .rh-right{ text-align:right; }
+.rh-label{
+  font-family:var(--f-head); font-weight:700; font-size:9px;
+  letter-spacing:.22em; text-transform:uppercase; color:var(--g-600);
+}
+.rh-client{ font-family:var(--f-head); font-weight:800; font-size:11px; letter-spacing:.04em; color:var(--ink); margin-top:2px; }
+
+.runfoot{
+  display:flex; align-items:center; justify-content:space-between;
+  border-top:1px solid var(--line);
+  padding-top:7px; margin-top:12px;
+  font-family:var(--f-head); font-weight:600; font-size:8.5px;
+  letter-spacing:.16em; text-transform:uppercase; color:var(--g-500);
+}
+
+/* ---- P&TY logo bug (real Happy Face) + wordmark ---------------------- */
+.pty-bug{
+  width:22px; height:22px; flex:none; display:inline-block;
+  object-fit:contain;
+}
+.pty-word{ font-family:var(--f-display); font-size:14px; letter-spacing:.02em; line-height:.9; color:var(--ink); }
+.pty-word small{ display:block; font-family:var(--f-head); font-weight:700; font-size:7.5px; letter-spacing:.26em; color:var(--g-600); }
+
+/* =====================================================================
+   PAGE-1 MASTHEAD
+   ===================================================================== */
+.masthead{ margin-bottom:18px; }
+.mast-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
+.mast-top .lock{ display:flex; align-items:center; gap:11px; }
+.mast-top .lock .pty-bug{ width:34px; height:34px; }
+.mast-top .lock .pty-word{ font-size:19px; }
+.mast-top .lock .pty-word small{ font-size:8.5px; }
+.mast-conf{ text-align:right; }
+.mast-conf b{ font-family:var(--f-head); font-weight:800; font-size:15px; letter-spacing:.02em; color:var(--ink); }
+
+.mast-title{ font-family:var(--f-display); font-size:47px; line-height:1; letter-spacing:.004em; text-transform:uppercase; white-space:nowrap; }
+.mast-sub{ font-family:var(--f-head); font-weight:700; font-size:13px; letter-spacing:.04em; color:var(--g-700); margin-top:9px; }
+
+.mast-rule{ height:5px; background:var(--accent); margin:16px 0 0; }
+
+.params{ display:flex; flex-wrap:wrap; gap:0; margin-top:14px; border:1px solid var(--line); }
+.param{ padding:8px 14px 9px; border-right:1px solid var(--line); flex:1 1 auto; }
+.param:last-child{ border-right:0; }
+.param .k{ font-family:var(--f-head); font-weight:700; font-size:8px; letter-spacing:.2em; text-transform:uppercase; color:var(--g-500); }
+.param .v{ font-family:var(--f-body); font-weight:600; font-size:13px; color:var(--ink); margin-top:3px; }
+.param.count .v{ font-family:var(--f-display); font-size:20px; line-height:1; }
+
+/* =====================================================================
+   AUDIENCE SNAPSHOT  (styles retained; not rendered in current build)
+   ===================================================================== */
+.snap{ margin-bottom:20px; }
+.section-label{
+  font-family:var(--f-head); font-weight:800; font-size:11px;
+  letter-spacing:.2em; text-transform:uppercase; color:var(--ink);
+  display:flex; align-items:center; gap:9px; margin-bottom:11px;
+}
+.section-label::after{ content:""; flex:1; height:1px; background:var(--line); }
+.section-label .sub{ font-weight:600; font-size:9px; color:var(--g-500); letter-spacing:.14em; }
+
+.snap-grid{ display:grid; grid-template-columns:172px 1fr 1fr; gap:24px; align-items:start; }
+
+.donut-wrap{ display:flex; align-items:center; gap:14px; }
+.donut{ width:92px; height:92px; border-radius:50%; position:relative; flex:none; }
+.donut::after{ content:""; position:absolute; inset:21px; border-radius:50%; background:var(--paper); }
+.donut .ctr{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:1; }
+.donut .ctr b{ font-family:var(--f-display); font-size:24px; line-height:.9; }
+.donut .ctr span{ font-family:var(--f-head); font-weight:700; font-size:7.5px; letter-spacing:.16em; color:var(--g-600); }
+.glegend{ font-size:11px; }
+.glegend div{ display:flex; align-items:center; gap:6px; margin-bottom:7px; }
+.glegend i{ width:9px; height:9px; border-radius:2px; flex:none; }
+.glegend b{ font-weight:700; }
+.glegend span{ color:var(--g-600); }
+
+.barlist{ display:flex; flex-direction:column; gap:6px; }
+.barrow{ display:grid; grid-template-columns:104px 1fr 30px; align-items:center; gap:9px; }
+.barrow .lbl{ font-size:10.5px; color:var(--g-700); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.barrow .track{ display:block; height:7px; background:var(--warm-300); border-radius:0; overflow:hidden; }
+.barrow .fill{ display:block; height:100%; background:var(--ink); }
+.barrow .pct{ font-family:var(--f-head); font-weight:700; font-size:10px; text-align:right; color:var(--ink); }
+.barrow.age .lbl{ font-family:var(--f-body); font-weight:600; }
+.mini-head{ font-family:var(--f-head); font-weight:700; font-size:8.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--g-500); margin-bottom:8px; }
+
+.mkt-strip{ display:flex; align-items:center; gap:0; margin-top:13px; border:1px solid var(--line); }
+.mkt-strip-label{ font-family:var(--f-head); font-weight:700; font-size:8px; letter-spacing:.18em; text-transform:uppercase; color:var(--g-500); padding:9px 13px; border-right:1px solid var(--line); white-space:nowrap; }
+.mchip{ display:flex; align-items:center; gap:7px; padding:9px 14px; border-right:1px solid var(--line); flex:1 1 auto; }
+.mchip:last-child{ border-right:0; }
+.mchip .code{ font-family:var(--f-head); font-weight:800; font-size:9px; letter-spacing:.05em; color:var(--paper); background:var(--ink); padding:2px 5px; border-radius:2px; }
+.mchip .mn{ font-size:11.5px; color:var(--g-700); flex:1; }
+.mchip b{ font-family:var(--f-display); font-size:15px; line-height:1; }
+
+/* =====================================================================
+   ROSTER TABLE
+   ===================================================================== */
+.roster-head{
+  display:grid; align-items:center; gap:var(--col-gap);
+  padding:0 8px 7px; border-bottom:1.5px solid var(--ink);
+  font-family:var(--f-head); font-weight:700; font-size:8px;
+  letter-spacing:.16em; text-transform:uppercase; color:var(--g-600);
+}
+.roster-head .num{ text-align:right; }
+
+.row{
+  display:grid; align-items:center; gap:var(--col-gap);
+  padding:0 8px; border-bottom:1px solid var(--line-soft);
+  break-inside:avoid;
+}
+.row .rk{ font-family:var(--f-head); font-weight:700; font-size:11px; color:var(--g-400); text-align:right; }
+.row .thumb{ background:var(--warm-200) center/cover no-repeat; border-radius:2px; }
+.row .name{ font-family:var(--f-body); font-weight:700; letter-spacing:-.005em; color:var(--ink); line-height:1.08; }
+.row .genre{ font-family:var(--f-head); font-weight:600; font-size:8.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--g-500); margin-top:3px; }
+
+/* career chip — colors mirror the Match app (translated for white print) */
+.career{ display:flex; align-items:center; }
+.career span{
+  padding:3px 9px; border-radius:999px; white-space:nowrap;
+  font-family:var(--f-head); font-weight:700; font-size:9px;
+  letter-spacing:.06em; text-transform:uppercase;
+}
+.st-superstar{ color:#b8500e; background:#fbe7d6; }
+.st-mainstream{ color:#8a7200; background:#f7edca; }
+.st-midlevel{ color:#067544; background:#d6f2e2; }
+.st-developing{ color:#2c6b93; background:#dbeaf3; }
+.st-legendary{ color:#bd2f2f; background:#f8dcdc; }
+.st-prospect{ color:#067544; background:#d6f2e2; }
+.st-undiscovered{ color:#6b6b6b; background:#ececea; }
+
+/* demo match */
+.demo{ }
+.demo .top{ display:flex; align-items:baseline; gap:4px; }
+.demo .pct{ font-family:var(--f-display); font-size:19px; line-height:.9; }
+.demo .u{ font-family:var(--f-head); font-weight:700; font-size:8px; color:var(--g-500); letter-spacing:.06em; }
+.demo .track{ display:block; height:4px; background:var(--warm-300); margin-top:4px; overflow:hidden; }
+.demo .fill{ display:block; height:100%; background:var(--ink); }
+
+/* affinity */
+.aff{ font-family:var(--f-head); font-weight:800; font-size:13px; letter-spacing:.01em; color:var(--ink); white-space:nowrap; }
+.aff.hi{ background:var(--accent); padding:2px 6px; border-radius:2px; }
+.aff small{ font-weight:700; font-size:9px; color:var(--g-500); }
+.aff.hi small{ color:var(--ink); }
+
+/* social stat cell */
+.stat{ text-align:right; }
+.stat .n{ font-family:var(--f-body); font-weight:600; font-size:12px; color:var(--ink); }
+.stat .n.dim{ color:var(--g-400); font-weight:500; }
+
+/* =====================================================================
+   LAYOUT A — LEDGER (compact)
+   ===================================================================== */
+body.layout-ledger{
+  --col-gap:11px;
+  --grid: 52px minmax(140px,1fr) 108px 116px 46px 56px 56px 56px;
+}
+body.layout-ledger .roster-head,
+body.layout-ledger .row{ grid-template-columns:var(--grid); }
+body.layout-ledger .row{ min-height:52px; }
+body.layout-ledger .row .thumb{ width:52px; height:39px; }
+body.layout-ledger .row .name{ font-size:12.5px; }
+
+/* =====================================================================
+   LAYOUT B — PROFILE (audience micro-strip, premium)
+   ===================================================================== */
+body.layout-profile{
+  --col-gap:12px;
+  --grid: 18px 78px minmax(128px,1fr) 92px 104px 44px 168px;
+}
+body.layout-profile .roster-head{ grid-template-columns:var(--grid); }
+body.layout-profile .roster-head .soc3{ text-align:right; }
+body.layout-profile .row{ grid-template-columns:var(--grid); min-height:78px; padding-top:8px; padding-bottom:8px; }
+body.layout-profile .row .thumb{ width:78px; height:58px; }
+body.layout-profile .row .name{ font-size:15.5px; }
+body.layout-profile .row .genre{ font-size:9px; }
+body.layout-profile .demo .pct{ font-size:23px; }
+
+/* per-artist audience micro-strip (layout B) */
+.austrip{ display:flex; flex-direction:column; gap:5px; }
+.austrip .mkt{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.austrip .mkt .code{ font-family:var(--f-head); font-weight:800; font-size:8.5px; letter-spacing:.05em; color:var(--paper); background:var(--ink); padding:1.5px 5px; border-radius:2px; }
+.austrip .mkt .place{ font-size:10.5px; color:var(--g-700); flex:1; }
+.austrip .mkt .mp{ font-family:var(--f-head); font-weight:700; font-size:10px; }
+.austrip .gen{ display:flex; align-items:center; gap:7px; }
+.austrip .gen .gbar{ flex:1; height:6px; display:flex; border-radius:0; overflow:hidden; background:var(--pink); }
+.austrip .gen .gbar i{ height:100%; background:var(--blue-lt); display:block; }
+.austrip .gen .gt{ font-family:var(--f-head); font-weight:700; font-size:8px; letter-spacing:.02em; color:var(--g-600); white-space:nowrap; }
+.austrip .soctrio{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.austrip .soctrio div{ display:flex; flex-direction:column; min-width:0; }
+.austrip .soctrio .pl{ font-family:var(--f-head); font-weight:700; font-size:7px; letter-spacing:.1em; text-transform:uppercase; color:var(--g-500); }
+.austrip .soctrio .vv{ font-family:var(--f-body); font-weight:600; font-size:11px; }
+.austrip .soctrio .vv.dim{ color:var(--g-400); }
+
+/* =====================================================================
+   PRINT
+   ===================================================================== */
+@page{ size:Letter; margin:0; }
+@media print{
+  body{ background:#fff; }
+  .toolbar{ display:none !important; }
+  #doc{ display:block; padding:0; gap:0; }
+  .sheet{ box-shadow:none; break-after:page; page-break-after:always; }
+  .sheet:last-child{ break-after:auto; page-break-after:auto; }
+}

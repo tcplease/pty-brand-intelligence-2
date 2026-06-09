@@ -385,6 +385,21 @@ export default function BrandSearchPage() {
   const hasBrandSelected = !!brandQuery
   const hasFilters = hasBrandSelected || selectedAges.length > 0 || gender !== 'any'
 
+  // Open the print-ready report in a new tab. Encodes the full filter state so the
+  // report endpoint re-runs the identical search and re-applies the grid's
+  // client-side filters (query stays the single source of truth).
+  const exportReport = () => {
+    const params = new URLSearchParams()
+    if (brandQuery) params.set('brand', brandQuery)
+    if (gender !== 'any') params.set('gender', gender)
+    if (selectedAges.length > 0) params.set('ages', selectedAges.join(','))
+    params.set('threshold', String(threshold))
+    if (selectedCareerStages.size > 0) params.set('careerStages', Array.from(selectedCareerStages).join(','))
+    if (selectedDealStages.size > 0) params.set('dealStages', Array.from(selectedDealStages).join(','))
+    if (wonUpcomingOnly) params.set('wonUpcoming', '1')
+    window.open(`/api/match/report?${params.toString()}`, '_blank')
+  }
+
   const clearAll = () => {
     setBrandInput('')
     setBrandQuery('')
@@ -754,6 +769,15 @@ export default function BrandSearchPage() {
                   )}
                 </div>
               )}
+
+              {/* Export Report — opens print-ready PDF view in a new tab */}
+              <button
+                onClick={exportReport}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors whitespace-nowrap active:opacity-70"
+                style={{ borderColor: Y, color: Y, background: `${Y}15` }}
+              >
+                Export Report
+              </button>
               </div>{/* end filter dropdowns */}
 
               {/* Legend */}
