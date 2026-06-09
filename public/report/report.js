@@ -30,13 +30,7 @@
     return { t: String(n), dim: false };
   }
 
-  // Career-stage rank. Report shows Mid-Level and above only.
-  const RANK = { legendary: 5, superstar: 4, mainstream: 3, midlevel: 2, developing: 1, undiscovered: 0 };
   const keyOf = (s) => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
-  function rankOf(stage) {
-    const r = RANK[keyOf(stage)];
-    return r == null ? -1 : r; // unknown/null stage → drop (below midlevel cutoff)
-  }
   // chip class — pastel print palette in styles.css (deliberately NOT the dark-mode hexes)
   const STAGE_CSS = {
     legendary: 'legendary', superstar: 'superstar', mainstream: 'mainstream',
@@ -144,7 +138,8 @@
   }
   function careerEl(a) {
     const c = el('div', 'career');
-    c.innerHTML = `<span class="${careerCls(a.stage)}">${a.stage}</span>`;
+    const label = a.stage ? a.stage : '';
+    c.innerHTML = `<span class="${careerCls(a.stage)}">${label}</span>`;
     return c;
   }
   function demoEl(a) {
@@ -237,9 +232,8 @@
     host.innerHTML = '';
     pages = [];
 
-    // Mid-Level and above only, sorted by demo match desc then affinity desc.
+    // Render exactly the filtered set passed in, sorted by demo match desc then affinity desc.
     const artists = DATA.artists
-      .filter((a) => rankOf(a.stage) >= RANK.midlevel)
       .sort((a, b) => b.demoMatch - a.demoMatch || b.affinity - a.affinity);
 
     let body = startSheet(true);
