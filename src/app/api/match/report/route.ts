@@ -69,8 +69,10 @@ export async function GET(request: Request) {
     fourteenDaysOut.setDate(fourteenDaysOut.getDate() + 14)
     const fourteenDaysOutStr = fourteenDaysOut.toISOString().split('T')[0]
 
+    // Compare case-insensitively: grid passes capitalized labels, DB values lowercase
+    const careerStagesLower = new Set(Array.from(careerStages, s => s.toLowerCase()))
     const filtered = results.filter((a: BrandSearchResult) => {
-      if (careerStages.size > 0 && (!a.career_stage || !careerStages.has(a.career_stage))) return false
+      if (careerStagesLower.size > 0 && (!a.career_stage || !careerStagesLower.has(a.career_stage.toLowerCase()))) return false
       if (dealStages.size > 0 && (!a.deal_stage || !dealStages.has(a.deal_stage))) return false
       if (wonUpcoming) {
         if (a.deal_stage !== WON_STAGE) return false
@@ -82,7 +84,7 @@ export async function GET(request: Request) {
     const artists: ReportArtist[] = filtered.map((a) => ({
       name: a.name,
       genre: a.primary_genre,
-      stage: a.career_stage, // raw lowercase; report.js maps the chip + applies Mid-Level+ cutoff
+      stage: a.career_stage, // raw lowercase; report.js maps the chip
       demoMatch: a.demographic_pct,
       affinity: a.affinity_score, // NOT combined_score
       spotify: a.spotify_followers,

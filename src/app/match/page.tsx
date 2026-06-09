@@ -418,8 +418,10 @@ export default function BrandSearchPage() {
   fourteenDaysOut.setDate(fourteenDaysOut.getDate() + 14)
   const fourteenDaysOutStr = fourteenDaysOut.toISOString().split('T')[0]
 
+  // Compare case-insensitively: dropdown labels are capitalized, DB values lowercase
+  const selectedCareerLower = new Set(Array.from(selectedCareerStages, s => s.toLowerCase()))
   const filteredResults = results.filter(a => {
-    if (selectedCareerStages.size > 0 && (!a.career_stage || !selectedCareerStages.has(a.career_stage))) return false
+    if (selectedCareerLower.size > 0 && (!a.career_stage || !selectedCareerLower.has(a.career_stage.toLowerCase()))) return false
     if (selectedDealStages.size > 0 && (!a.deal_stage || !selectedDealStages.has(a.deal_stage))) return false
     if (wonUpcomingOnly) {
       if (a.deal_stage !== 'Won (Final On-Sale Planned)') return false
