@@ -15,6 +15,10 @@
   const DATA = window.PTY_DATA;
   const doc = () => document.getElementById('doc');
 
+  // Logo heights (px). Width auto via the 2.886:1 ratio of the SVGs.
+  const MAST_LOGO_H = 48;     // page-1 masthead lockup (URL logo)
+  const RUNHEAD_LOGO_H = 28;  // running header, pages 2+ (no-URL logo)
+
   /* ---------- helpers ---------- */
   function fmtNum(n) {
     if (n == null) return { t: '—', dim: true };
@@ -74,7 +78,7 @@
   function runhead() {
     const h = el('div', 'runhead');
     h.innerHTML =
-      `<div class="rh-left"><img src="/report/img/PTY_Logo_Type_Yellow.svg" alt="Please & Thank You" style="height:19px;width:auto;display:block"></div>
+      `<div class="rh-left"><img src="/report/img/PTY_Logo_Type_Yellow.svg" alt="Please & Thank You" style="height:${RUNHEAD_LOGO_H}px;width:auto;display:block"></div>
        <div class="rh-right">
          <div class="rh-label">Artist Intelligence Report</div>
        </div>`;
@@ -102,7 +106,7 @@
 
     wrap.innerHTML =
       `<div class="mast-top">
-         <div class="lock"><img src="/report/img/PTY_Logo_Type_URL_Yellow.svg" alt="Please & Thank You" style="height:40px;width:auto;display:block"></div>
+         <div class="lock"><img src="/report/img/PTY_Logo_Type_URL_Yellow.svg" alt="Please & Thank You" style="height:${MAST_LOGO_H}px;width:auto;display:block"></div>
        </div>
        <div class="mast-title">${m.reportTitle}</div>
        <div class="mast-sub">Artist Intelligence</div>
