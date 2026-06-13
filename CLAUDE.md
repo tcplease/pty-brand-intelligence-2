@@ -393,7 +393,7 @@ CM data is expensive and rarely changes. Follow these rules strictly:
 ### When CM data is pulled
 - **Once per artist, at creation time.** When an artist enters the system (via Monday sync, festival discovery, Add Leads, or Add to Pipeline), run the full 8-call enrichment immediately. After that, the data is static.
 - **Never re-pull for existing artists** unless Tim explicitly requests a refresh for specific artists.
-- **The daily Monday cron** syncs deals and contacts only. Zero CM calls for artists already in `intel_artists`. CM calls only for genuinely new artists (no `chartmetric_id` linked yet).
+- **The hourly Monday cron** syncs deals and contacts, then for brand-new Monday artists (visible stages only): searches CM by name (1 call, exact-match-only linking, unmatched names logged), and runs full enrichment for linked artists with no `intel_artists` row. Zero CM calls for artists already in `intel_artists`. Per-run caps: 25 searches, 25 enrichments. Negative cache via `intel_monday_items.cm_search_attempted_at` + `cm_search_result`: `'no_match'` retries after 30 days, `'ambiguous'` never auto-retries (manual linking only).
 - **The weekly festival cron** enriches new discoveries only. Skips artists already in `intel_artists`.
 
 ### How to prevent accidental overwrites

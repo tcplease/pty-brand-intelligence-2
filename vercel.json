@@ -6,11 +6,7 @@
     },
     {
       "path": "/api/sync/monday",
-      "schedule": "3 11 * * *"
-    },
-    {
-      "path": "/api/sync/monday",
-      "schedule": "7 19 * * *"
+      "schedule": "7 * * * *"
     },
     {
       "path": "/api/sync/spotify?limit=600&offset=0",

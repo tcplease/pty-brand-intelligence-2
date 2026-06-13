@@ -28,7 +28,48 @@ const NUMBER_COLS = new Set(['numbers0', 'numbers__1', 'numbers02', 'numbers'])
 const DATE_COLS = new Set(['mirror6', 'mirror23', 'mirror21', 'mirror20', 'mirror16', 'date1'])
 const TEXT_COLS = new Set(['text__1', 'person', 'status', 'tags6', 'priority'])
 
+// Stages whose artists appear in the app (per docs/monday-data-reference.md).
+// Lost / Tour Canceled / Fell Off / Closed are excluded from CM search + enrichment.
+const VISIBLE_STAGES = new Set([
+  'Outbound - No Contact',
+  'Outbound - Automated Contact',
+  'Prospect - Direct Sales Agent Contact',
+  'Active Leads (Contact Has Responded)',
+  'Proposal (financials submitted)',
+  'Negotiation (Terms Being Discussed)',
+  'Finalizing On-Sale (Terms Agreed)',
+  'Won (Final On-Sale Planned)',
+])
+
+// Per-run caps keep CM cost bounded on the hourly cron; the queue drains across runs.
+const MAX_SEARCHES_PER_RUN = 25
+const MAX_ENRICH_PER_RUN = 25
+const CM_SEARCH_RETRY_DAYS = 30 // re-attempt a 'no_match' name after this many days
+
 // ── Helpers ───────────────────────────────────────────
+// Supabase caps responses at 1000 rows; intel_artists and intel_monday_items
+// both exceed that, so every full-table read must paginate.
+async function fetchAllRows(
+  client: typeof supabase,
+  table: string,
+  select: string,
+  applyFilters?: (q: any) => any // eslint-disable-line @typescript-eslint/no-explicit-any -- Supabase builder type varies per filter chain
+) {
+  const PAGE = 1000
+  let from = 0
+  const rows: any[] = [] // eslint-disable-line @typescript-eslint/no-explicit-any -- shape depends on select string
+  while (true) {
+    let q: any = client.from(table).select(select).range(from, from + PAGE - 1) // eslint-disable-line @typescript-eslint/no-explicit-any
+    if (applyFilters) q = applyFilters(q)
+    const { data, error } = await q
+    if (error) throw new Error(`${table} paged fetch error: ${error.message}`)
+    rows.push(...(data || []))
+    if (!data || data.length < PAGE) break
+    from += PAGE
+  }
+  return rows
+}
+
 function parseColumnValue(colId: string, text: string | null, value: string | null, displayValue?: string | null) {
   if (!text && !value && !displayValue) return null
 
@@ -177,12 +218,12 @@ async function syncContacts(dealItems: any[]) {
   const serviceClient = createServiceClient()
 
   // Get deal ID → chartmetric_id mapping
-  const { data: mondayItems, error: mondayError } = await serviceClient
-    .from('intel_monday_items')
-    .select('monday_item_id, chartmetric_id')
-    .not('chartmetric_id', 'is', null)
-
-  if (mondayError) throw mondayError
+  const mondayItems = await fetchAllRows(
+    serviceClient,
+    'intel_monday_items',
+    'monday_item_id, chartmetric_id',
+    q => q.not('chartmetric_id', 'is', null)
+  )
 
   const dealIdToCmId = new Map<string, number>()
   for (const item of mondayItems || []) {
@@ -388,19 +429,19 @@ async function autoLinkByName() {
   const serviceClient = createServiceClient()
 
   // Get all unlinked Monday items
-  const { data: unlinked } = await serviceClient
-    .from('intel_monday_items')
-    .select('monday_item_id, artist_name')
-    .is('chartmetric_id', null)
+  const unlinked = await fetchAllRows(
+    serviceClient,
+    'intel_monday_items',
+    'monday_item_id, artist_name',
+    q => q.is('chartmetric_id', null)
+  )
 
-  if (!unlinked?.length) return { linked: 0 }
+  if (!unlinked.length) return { linked: 0 }
 
   // Get all artist names from intel_artists for matching
-  const { data: artists } = await serviceClient
-    .from('intel_artists')
-    .select('chartmetric_id, name')
+  const artists = await fetchAllRows(serviceClient, 'intel_artists', 'chartmetric_id, name')
 
-  if (!artists?.length) return { linked: 0 }
+  if (!artists.length) return { linked: 0 }
 
   // Build case-insensitive lookup map
   const nameToCmId = new Map<string, number>()
@@ -431,34 +472,215 @@ async function autoLinkByName() {
   return { linked }
 }
 
-async function enrichNewArtists() {
-  // Find Monday items with chartmetric_id that don't have a matching intel_artists record
-  const { data: mondayItems } = await supabase
-    .from('intel_monday_items')
-    .select('chartmetric_id, artist_name')
-    .not('chartmetric_id', 'is', null)
+// ── CM name search for brand-new Monday artists ──────
+// Items the team creates directly in Monday have no chartmetric_id and no
+// intel_artists row, so neither autoLinkByName nor enrichNewArtists can see
+// them. This step searches CM by name and links only exact, unambiguous
+// matches; everything else is reported as unmatched for manual linking.
+//
+// intel_monday_items.chartmetric_id has an FK to intel_artists, so a match
+// whose artist row doesn't exist yet can't be linked here — it's returned as
+// a PendingLink and enrichNewArtists links it after inserting the artist.
+interface PendingLink {
+  cmId: number
+  name: string
+  itemIds: number[]
+}
 
-  if (!mondayItems?.length) return { enriched: 0, cm_calls: 0 }
+async function searchAndLinkNewArtists(testNames?: string[]) {
+  const serviceClient = createServiceClient()
+
+  const unlinked = await fetchAllRows(
+    serviceClient,
+    'intel_monday_items',
+    'monday_item_id, artist_name, stage, cm_search_attempted_at, cm_search_result',
+    q => q.is('chartmetric_id', null)
+  )
+
+  const retryCutoff = new Date(Date.now() - CM_SEARCH_RETRY_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  const testNameSet = testNames?.length
+    ? new Set(testNames.map(n => n.toLowerCase().trim()))
+    : null
+
+  const visible = unlinked.filter(i =>
+    VISIBLE_STAGES.has(i.stage) &&
+    (!testNameSet || testNameSet.has(i.artist_name.toLowerCase().trim()))
+  )
+
+  // Negative cache: never searched, or 'no_match' old enough to retry.
+  // 'ambiguous' is excluded — those wait for manual resolution.
+  const candidates = visible.filter(i =>
+    i.cm_search_result === null ||
+    (i.cm_search_result === 'no_match' && i.cm_search_attempted_at < retryCutoff)
+  )
+
+  // Surface cached-ambiguous items every run so they don't get forgotten
+  const awaitingManual = [...new Set(
+    visible.filter(i => i.cm_search_result === 'ambiguous').map(i => i.artist_name)
+  )].sort()
+  if (awaitingManual.length) {
+    console.log(`CM search: ${awaitingManual.length} names awaiting manual linking: ${awaitingManual.join(', ')}`)
+  }
+
+  if (!candidates.length) {
+    return { searched: 0, linked: 0, unmatched: [], deferred: 0, awaiting_manual: awaitingManual, pendingLinks: [] as PendingLink[] }
+  }
+
+  // Group items by normalized name so one search covers all deals for an artist
+  const byName = new Map<string, { display: string; itemIds: number[] }>()
+  for (const item of candidates) {
+    const key = item.artist_name.toLowerCase().trim()
+    const group = byName.get(key) || { display: item.artist_name, itemIds: [] as number[] }
+    group.itemIds.push(item.monday_item_id)
+    byName.set(key, group)
+  }
+
+  const names = Array.from(byName.entries())
+  const toSearch = names.slice(0, MAX_SEARCHES_PER_RUN)
+  const deferred = names.length - toSearch.length
+  if (deferred > 0) console.log(`CM search: ${deferred} names deferred to next run (cap ${MAX_SEARCHES_PER_RUN})`)
+
+  let cmToken: string
+  try {
+    cmToken = await getCMToken()
+  } catch {
+    console.error('CM token failed, skipping name search')
+    return { searched: 0, linked: 0, unmatched: [], deferred: names.length, awaiting_manual: awaitingManual, pendingLinks: [] as PendingLink[], error: 'CM token failed' }
+  }
+
+  let linked = 0
+  const unmatched: { name: string; reason: string; candidates?: { id: number; name: string }[] }[] = []
+  const pendingLinks: PendingLink[] = []
+  const now = new Date().toISOString()
+
+  for (const [key, group] of toSearch) {
+    let matchedCmId: number | null = null
+    let outcome: 'linked' | 'no_match' | 'ambiguous' | 'failed' = 'failed'
+    try {
+      await sleep(600)
+      const res = await fetch(`${CM_BASE}/search?q=${encodeURIComponent(group.display)}&type=artists&limit=3`, {
+        headers: { Authorization: `Bearer ${cmToken}` },
+      })
+      if (!res.ok) throw new Error(`CM search HTTP ${res.status}`)
+      const results: { id: number; name: string }[] = (await res.json()).obj?.artists || []
+
+      const exact = results.filter(r => (r.name || '').toLowerCase().trim() === key)
+      if (exact.length === 1) {
+        matchedCmId = exact[0].id
+        outcome = 'linked'
+      } else {
+        outcome = exact.length === 0 ? 'no_match' : 'ambiguous'
+        unmatched.push({
+          name: group.display,
+          reason: exact.length === 0 ? 'no exact match' : 'ambiguous (multiple exact matches)',
+          candidates: results.map(r => ({ id: r.id, name: r.name })),
+        })
+      }
+    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any -- error shape unknown
+      console.error(`CM search failed for "${group.display}":`, err.message)
+      unmatched.push({ name: group.display, reason: 'search request failed' })
+    }
+
+    // Transient request failures don't stamp the cache — the name retries next run
+    if (outcome === 'failed') continue
+
+    if (matchedCmId) {
+      // The chartmetric_id FK requires an intel_artists row. If the artist
+      // doesn't exist yet, defer the link — enrichNewArtists inserts the
+      // artist and sets the link afterwards. No cache stamp either: if
+      // enrichment fails, the name retries cleanly next run.
+      const { data: existing } = await serviceClient
+        .from('intel_artists')
+        .select('chartmetric_id')
+        .eq('chartmetric_id', matchedCmId)
+        .maybeSingle()
+
+      if (!existing) {
+        pendingLinks.push({ cmId: matchedCmId, name: group.display, itemIds: group.itemIds })
+        console.log(`CM search matched: ${group.display} → CM ${matchedCmId}, pending enrichment`)
+        continue
+      }
+    }
+
+    // Write the cache result; on match, set the link in the same write.
+    // cm_search_result stays NULL on link — linked items are identified by
+    // chartmetric_id, not the cache. Only intel_monday_items is touched here —
+    // never intel_artists.
+    const update: Record<string, unknown> = {
+      cm_search_attempted_at: now,
+      cm_search_result: outcome === 'linked' ? null : outcome,
+    }
+    if (matchedCmId) update.chartmetric_id = matchedCmId
+    const { error: updateError } = await serviceClient
+      .from('intel_monday_items')
+      .update(update)
+      .in('monday_item_id', group.itemIds)
+    if (updateError) {
+      console.error(`Failed to update items for "${group.display}":`, updateError.message)
+    } else if (matchedCmId) {
+      linked++
+      console.log(`CM search linked: ${group.display} → CM ${matchedCmId} (${group.itemIds.length} items)`)
+    }
+  }
+
+  return { searched: toSearch.length, linked, unmatched, deferred, awaiting_manual: awaitingManual, pendingLinks }
+}
+
+async function enrichNewArtists(testNames?: string[], pendingLinks: PendingLink[] = []) {
+  // Find Monday items with chartmetric_id that don't have a matching intel_artists record.
+  // Only visible-stage items qualify — Lost/Fell Off/Canceled deals don't trigger CM spend.
+  let mondayItems = await fetchAllRows(
+    supabase,
+    'intel_monday_items',
+    'chartmetric_id, artist_name, stage',
+    q => q.not('chartmetric_id', 'is', null)
+  )
+  mondayItems = mondayItems.filter(i => VISIBLE_STAGES.has(i.stage))
+
+  if (testNames?.length) {
+    const testNameSet = new Set(testNames.map(n => n.toLowerCase().trim()))
+    mondayItems = mondayItems.filter(i => testNameSet.has(i.artist_name.toLowerCase().trim()))
+  }
+
+  // Name-search matches awaiting their artist row go first; itemIds marks
+  // them for linking once the insert succeeds (FK requires artist-first).
+  mondayItems = [
+    ...pendingLinks.map(p => ({ chartmetric_id: p.cmId, artist_name: p.name, itemIds: p.itemIds })),
+    ...mondayItems,
+  ]
+
+  if (!mondayItems.length) return { enriched: 0, cm_calls: 0 }
 
   const cmIds = [...new Set(mondayItems.map(i => i.chartmetric_id))]
 
-  const { data: existingArtists } = await supabase
-    .from('intel_artists')
-    .select('chartmetric_id')
-    .in('chartmetric_id', cmIds)
-
-  const existingSet = new Set((existingArtists || []).map(a => a.chartmetric_id))
+  // .in() with >1000 ids breaks both URL length and the response row cap — chunk it
+  const existingSet = new Set<number>()
+  for (let i = 0; i < cmIds.length; i += 500) {
+    const { data: chunk, error } = await supabase
+      .from('intel_artists')
+      .select('chartmetric_id')
+      .in('chartmetric_id', cmIds.slice(i, i + 500))
+    if (error) throw new Error(`intel_artists existence check error: ${error.message}`)
+    for (const a of chunk || []) existingSet.add(a.chartmetric_id)
+  }
   const newItems = mondayItems.filter(i => !existingSet.has(i.chartmetric_id))
 
   // Dedupe by chartmetric_id
   const seen = new Set<number>()
-  const toEnrich = newItems.filter(i => {
+  let toEnrich = newItems.filter(i => {
     if (seen.has(i.chartmetric_id)) return false
     seen.add(i.chartmetric_id)
     return true
   })
 
   if (!toEnrich.length) return { enriched: 0, cm_calls: 0 }
+
+  // Bound CM spend per run (~8 calls per artist); the hourly cron drains the rest
+  const enrichDeferred = Math.max(0, toEnrich.length - MAX_ENRICH_PER_RUN)
+  if (enrichDeferred > 0) {
+    console.log(`Enrichment: ${enrichDeferred} artists deferred to next run (cap ${MAX_ENRICH_PER_RUN})`)
+    toEnrich = toEnrich.slice(0, MAX_ENRICH_PER_RUN)
+  }
 
   let cmToken: string
   try {
@@ -491,23 +713,28 @@ async function enrichNewArtists() {
         headers: { Authorization: `Bearer ${cmToken}` },
       })
       cmCalls++
-      const career = (await careerRes.json()).obj?.[0]
+      const career = careerRes.ok ? (await careerRes.json()).obj?.[0] : undefined
 
-      // Brand affinities
+      // Brand affinities — 404s for artists without IG audience data; that must
+      // not abort enrichment, so guard the parse and default to no affinities.
       await sleep(500)
       const brandRes = await fetch(`${CM_BASE}/artist/${cmId}/instagram-audience-data?field=brandAffinity`, {
         headers: { Authorization: `Bearer ${cmToken}` },
       })
       cmCalls++
-      const brands = ((await brandRes.json()).obj || []).filter((b: any) => (b.affinity || 0) >= 1.0)
+      const brands = brandRes.ok
+        ? (((await brandRes.json()).obj || []) as any[]).filter((b: any) => (b.affinity || 0) >= 1.0)
+        : []
 
-      // Sector affinities
+      // Sector affinities — same: optional, 404s when no IG audience data exists
       await sleep(500)
       const sectorRes = await fetch(`${CM_BASE}/artist/${cmId}/instagram-audience-data?field=interests`, {
         headers: { Authorization: `Bearer ${cmToken}` },
       })
       cmCalls++
-      const sectors = ((await sectorRes.json()).obj || []).filter((s: any) => (s.affinity || 0) >= 1.0)
+      const sectors = sectorRes.ok
+        ? (((await sectorRes.json()).obj || []) as any[]).filter((s: any) => (s.affinity || 0) >= 1.0)
+        : []
 
       // Spotify ID from URLs
       await sleep(500)
@@ -515,17 +742,17 @@ async function enrichNewArtists() {
         headers: { Authorization: `Bearer ${cmToken}` },
       })
       cmCalls++
-      const urls = (await urlsRes.json()).obj || []
+      const urls: any[] = urlsRes.ok ? ((await urlsRes.json()).obj || []) : []
       const spotifyUrl = urls.find((u: any) => u.domain === 'spotify')?.url?.[0] || ''
       const spotifyId = spotifyUrl.match(/artist\/([a-zA-Z0-9]+)/)?.[1] || null
 
-      // Demographics
+      // Demographics — optional, 404s when no IG audience data exists
       await sleep(500)
       const demoRes = await fetch(`${CM_BASE}/artist/${cmId}/instagram-audience-data?field=demographics`, {
         headers: { Authorization: `Bearer ${cmToken}` },
       })
       cmCalls++
-      const demo = (await demoRes.json()).obj
+      const demo = demoRes.ok ? (await demoRes.json()).obj : null
 
       // Social stats from /stat/ endpoints (profile does NOT return these)
       const socialStats: Record<string, number | null> = {
@@ -581,7 +808,29 @@ async function enrichNewArtists() {
         artistData.age_65_plus_pct = ages['65+'] ?? null
       }
 
-      await supabase.from('intel_artists').insert(artistData)
+      const { error: insertError } = await supabase.from('intel_artists').insert(artistData)
+      if (insertError) {
+        console.error(`Failed to insert artist ${p.name} (CM ${cmId}):`, insertError.message)
+        continue
+      }
+
+      // Artist row now exists — complete any deferred name-search link.
+      // cm_search_result stays NULL: linked items are identified by chartmetric_id.
+      if (item.itemIds?.length) {
+        const { error: linkError } = await createServiceClient()
+          .from('intel_monday_items')
+          .update({
+            chartmetric_id: cmId,
+            cm_search_attempted_at: new Date().toISOString(),
+            cm_search_result: null,
+          })
+          .in('monday_item_id', item.itemIds)
+        if (linkError) {
+          console.error(`Failed to link Monday items for ${p.name} (CM ${cmId}):`, linkError.message)
+        } else {
+          console.log(`Linked ${item.itemIds.length} Monday items for ${p.name} (CM ${cmId})`)
+        }
+      }
 
       // Insert brand affinities
       if (brands.length) {
@@ -616,11 +865,20 @@ async function enrichNewArtists() {
     }
   }
 
-  return { enriched, cm_calls: cmCalls }
+  return { enriched, cm_calls: cmCalls, deferred: enrichDeferred }
 
 }
 
 // ── Main handler ──────────────────────────────────────
+
+// ?names=TEN,Rebecca Black — restrict CM search + enrichment to specific
+// artists (used for the test-before-batch protocol; deals/contacts still sync fully)
+function parseTestNames(request: Request): string[] | undefined {
+  const raw = new URL(request.url).searchParams.get('names')
+  if (!raw) return undefined
+  const names = raw.split(',').map(n => n.trim()).filter(Boolean)
+  return names.length ? names : undefined
+}
 
 // GET handler for Vercel Cron
 export async function GET(request: Request) {
@@ -628,17 +886,17 @@ export async function GET(request: Request) {
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  return runMondaySync()
+  return runMondaySync(parseTestNames(request))
 }
 
 // POST handler for manual triggers
-export async function POST() {
-  return runMondaySync()
+export async function POST(request: Request) {
+  return runMondaySync(parseTestNames(request))
 }
 
-async function runMondaySync() {
+async function runMondaySync(testNames?: string[]) {
   try {
-    console.log('Starting Monday sync...')
+    console.log('Starting Monday sync...', testNames ? `(test mode: ${testNames.join(', ')})` : '')
 
     const deals = await syncDeals()
     console.log('Deals sync complete:', { total: deals.total, upserted: deals.upserted })
@@ -647,17 +905,24 @@ async function runMondaySync() {
     const autoLinked = await autoLinkByName()
     console.log('Auto-link complete:', autoLinked)
 
+    // Search CM by name for brand-new Monday artists and link exact matches
+    const search = await searchAndLinkNewArtists(testNames)
+    console.log('CM name search complete:', JSON.stringify(search))
+
+    // Contacts run after linking so newly linked artists get contacts in the same run
     const contacts = await syncContacts(deals.items)
     console.log('Contacts sync complete:', contacts)
 
-    // Enrich any new artists that don't have CM data yet
-    const enrichment = await enrichNewArtists()
+    // Enrich any new artists that don't have CM data yet; name-search matches
+    // awaiting an artist row get inserted and linked here (FK requires artist-first)
+    const enrichment = await enrichNewArtists(testNames, search.pendingLinks)
     console.log('Enrichment complete:', enrichment)
 
     return NextResponse.json({
       success: true,
       deals,
       autoLinked,
+      search,
       contacts,
       enrichment,
     })

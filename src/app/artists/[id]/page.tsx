@@ -660,6 +660,19 @@ Festival Appearances: ${activity.filter(a => a.event_type === 'festival_added').
         .slice(0, 6)
     : []
 
+  // ButterflyChart falls back to a 50/50 split when gender/age are null, which
+  // would show fabricated data for partial-data artists. Only render it when at
+  // least one demographic field is present; otherwise show an empty state.
+  const hasDemographics =
+    artist.audience_male_pct != null ||
+    artist.audience_female_pct != null ||
+    artist.age_13_17_pct != null ||
+    artist.age_18_24_pct != null ||
+    artist.age_25_34_pct != null ||
+    artist.age_35_44_pct != null ||
+    artist.age_45_64_pct != null ||
+    artist.age_65_plus_pct != null
+
   const managers = contacts.filter(c => c.role === 'manager')
   const agents = contacts.filter(c => c.role === 'agent')
   const bizManagers = contacts.filter(c => c.role === 'business_manager')
@@ -831,7 +844,9 @@ Festival Appearances: ${activity.filter(a => a.event_type === 'festival_added').
               <div className="text-xs uppercase tracking-wider mb-4" style={{ color: W50 }}>Audience Demographics</div>
               <div className="rounded-xl p-4 border mb-4" style={{ background: SURFACE, borderColor: BORDER }}>
                 <div className="text-xs uppercase tracking-wider mb-3" style={{ color: W30 }}>Age & Gender</div>
-                <ButterflyChart artist={artist} />
+                {hasDemographics
+                  ? <ButterflyChart artist={artist} />
+                  : <p className="text-sm py-4" style={{ color: W30 }}>No audience demographic data.</p>}
               </div>
               {ethnicityRows.length > 0 && (
                 <div className="rounded-xl p-4 border mb-4" style={{ background: SURFACE, borderColor: BORDER }}>
