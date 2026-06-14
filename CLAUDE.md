@@ -383,6 +383,9 @@ Strategies:
 11. **Never use `any` in TypeScript without a justifying comment**
 12. **Never use raw `<img>` tags** — always `next/image`
 13. **Never break the Monday.com board schema** — `chartmetric_id` stays in Supabase
+14. **Never run a bulk `UPDATE` / `DELETE` / `TRUNCATE` / `DROP` without writing a full-row snapshot table first** — e.g. `CREATE TABLE intel_artists_prerefresh_<YYYYMMDD> AS SELECT * FROM intel_artists WHERE <affected ids>`. The operation must be fully reversible before it runs. No exceptions, even for "fill-only" refreshes.
+15. **Never write null silently in response to a failed CM call** — a non-2xx or thrown CM request is a real failure: log it loudly and count it per endpoint (see `/api/sync/chartmetric` failure tracker). Only a legitimate 200-with-empty-data may result in a null. A silent null on error is exactly how the May 2026 demographics regression went unnoticed for ~5 weeks.
+16. **Never bump `cm_last_refreshed_at` on a partial refresh** — only a full enrichment pass sets it. Partial/surgical updates (e.g. a monthly-listeners-only sweep) update just the touched field(s) + `updated_at`, leaving `cm_last_refreshed_at` untouched so the artist is not misrepresented as fully refreshed.
 
 ---
 
@@ -407,6 +410,13 @@ CM data is expensive and rarely changes. Follow these rules strictly:
 - Festival lineup query = 1 call per festival
 - Monday sync = 0 CM calls (Monday API only) unless new artists found
 - Budget: ~30-40 CM calls/week for festival monitoring, ~5-30 for new Monday artists
+
+### Surgical / partial refresh
+- `/api/sync/chartmetric?monthlyonly=true&ids=…` updates **only** `spotify_monthly_listeners` (+ `updated_at`) via one `stat/spotify` call per artist. It does NOT touch demographics/socials/affinities and does NOT bump `cm_last_refreshed_at` (see Never-Do rule 16). Use for backfilling a single field without a full re-enrichment.
+
+### Data-health monitoring (catches silent regressions)
+- `/api/sync/chartmetric` returns `cm_call_failures` + `failures_by_endpoint` every run (Never-Do rule 15). A spike means CM calls are erroring, not returning data.
+- `/api/health/enrichment` (weekly Monday cron) asserts a fixed canary set of known-full superstars stays fully populated and reports key-field null-rates within the IG≥10k cohort, posting to Slack. This is the standing tripwire that converts a silent multi-week regression into a same-week alert.
 
 ---
 

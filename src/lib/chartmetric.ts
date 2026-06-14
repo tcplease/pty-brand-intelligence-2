@@ -168,16 +168,29 @@ export function extractSectorAffinities(audience: any, cmId: number): SectorAffi
 }
 
 // Fetch the instagram-audience-stats payload (demographics + brands + sectors
-// in one call). Returns the `obj` or null on any non-200 / error.
-export async function getInstagramAudience(cmId: number, token: string): Promise<any | null> {
+// in one call). Returns the `obj` or null.
+//
+// `onError` is called ONLY on a real fetch failure (non-2xx or thrown) — not on
+// a legitimate 200 that simply carries no audience data. This lets callers
+// distinguish "Chartmetric errored" (alarm) from "this artist has no IG data"
+// (expected) instead of silently writing null in both cases.
+export async function getInstagramAudience(
+  cmId: number,
+  token: string,
+  onError?: (detail: string) => void
+): Promise<any | null> {
   try {
     const res = await fetch(`${CM_BASE}/artist/${cmId}/instagram-audience-stats`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      onError?.(`HTTP ${res.status}`)
+      return null
+    }
     const data = await res.json()
     return data?.obj || null
-  } catch {
+  } catch (err: any) {
+    onError?.(`threw: ${err?.message || 'unknown'}`)
     return null
   }
 }

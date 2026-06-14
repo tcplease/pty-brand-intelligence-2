@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { getSpotifyToken, getLatestAlbum } from '@/lib/spotify'
-import { latestStatValue, extractDemographics } from '@/lib/chartmetric'
+import { latestStatValue, extractDemographics, getInstagramAudience } from '@/lib/chartmetric'
 
 export const maxDuration = 300
 
@@ -19,60 +19,103 @@ async function getCMToken(): Promise<string> {
   return data.token
 }
 
-// ── Artist metadata ───────────────────────────────────
-async function getArtistMeta(cmId: number, token: string) {
-  const res = await fetch(`https://api.chartmetric.com/api/artist/${cmId}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  if (!res.ok) return null
-  const data = await res.json()
-  const obj = data?.obj
-  if (!obj) return null
+// ── Fail-loud tracking ────────────────────────────────
+// A CM call that returns non-2xx or throws is a real failure (alarm). A 200
+// with empty data is legitimate. We count failures per endpoint and surface
+// the summary in the run output so a regression (like May 2026's silent null
+// demographics) shows up as a failure spike instead of vanishing into nulls.
+type RecordFailure = (endpoint: string, cmId: number, detail: string) => void
 
+interface FailureTracker {
+  counts: Record<string, number>
+  record: RecordFailure
+}
+
+function makeFailureTracker(): FailureTracker {
+  const counts: Record<string, number> = {}
   return {
-    name: obj.name || null,
-    image_url: obj.image_url || null,
-    primary_genre: obj.genres?.primary?.name || null,
-    cm_score: obj.cm_artist_score ?? obj.cm_score ?? null,
-    general_manager: obj.general_manager || null,
+    counts,
+    record(endpoint, cmId, detail) {
+      counts[endpoint] = (counts[endpoint] || 0) + 1
+      console.error(`[CM FAIL] ${endpoint} cm=${cmId}: ${detail}`)
+    },
+  }
+}
+
+// ── Artist metadata ───────────────────────────────────
+async function getArtistMeta(cmId: number, token: string, onFail?: RecordFailure) {
+  try {
+    const res = await fetch(`https://api.chartmetric.com/api/artist/${cmId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) {
+      onFail?.('artist/:id', cmId, `HTTP ${res.status}`)
+      return null
+    }
+    const data = await res.json()
+    const obj = data?.obj
+    if (!obj) return null
+
+    return {
+      name: obj.name || null,
+      image_url: obj.image_url || null,
+      primary_genre: obj.genres?.primary?.name || null,
+      cm_score: obj.cm_artist_score ?? obj.cm_score ?? null,
+      general_manager: obj.general_manager || null,
+    }
+  } catch (err: any) {
+    onFail?.('artist/:id', cmId, `threw: ${err?.message || 'unknown'}`)
+    return null
   }
 }
 
 // ── Spotify artist ID (from /urls endpoint) ──────────
-async function getSpotifyArtistId(cmId: number, token: string): Promise<string | null> {
+async function getSpotifyArtistId(cmId: number, token: string, onFail?: RecordFailure): Promise<string | null> {
   try {
     const res = await fetch(`https://api.chartmetric.com/api/artist/${cmId}/urls`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      onFail?.('urls', cmId, `HTTP ${res.status}`)
+      return null
+    }
     const data = await res.json()
     const spotifyEntry = (data.obj || []).find((u: any) => u.domain === 'spotify')
     if (!spotifyEntry?.url?.[0]) return null
     // Parse ID from URL: https://open.spotify.com/artist/XXXXX
     const match = spotifyEntry.url[0].match(/\/artist\/([a-zA-Z0-9]+)/)
     return match ? match[1] : null
-  } catch {
+  } catch (err: any) {
+    onFail?.('urls', cmId, `threw: ${err?.message || 'unknown'}`)
     return null
   }
 }
 
 // ── Career stage + score ─────────────────────────────
-async function getCareerData(cmId: number, token: string): Promise<{ stage: string | null; score: number | null }> {
-  const res = await fetch(
-    `https://api.chartmetric.com/api/artist/${cmId}/career?limit=1`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  )
-  if (!res.ok) return { stage: null, score: null }
-  const data = await res.json()
-  const entry = data?.obj?.[0]
-  return {
-    stage: entry?.stage || null,
-    score: entry?.score != null ? parseFloat(entry.score) : null,
+async function getCareerData(cmId: number, token: string, onFail?: RecordFailure): Promise<{ stage: string | null; score: number | null }> {
+  try {
+    const res = await fetch(
+      `https://api.chartmetric.com/api/artist/${cmId}/career?limit=1`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    )
+    if (!res.ok) {
+      onFail?.('career', cmId, `HTTP ${res.status}`)
+      return { stage: null, score: null }
+    }
+    const data = await res.json()
+    const entry = data?.obj?.[0]
+    return {
+      stage: entry?.stage || null,
+      score: entry?.score != null ? parseFloat(entry.score) : null,
+    }
+  } catch (err: any) {
+    onFail?.('career', cmId, `threw: ${err?.message || 'unknown'}`)
+    return { stage: null, score: null }
   }
 }
 
 // ── Social stats ──────────────────────────────────────
-async function getSocialStats(cmId: number, token: string) {
+async function getSocialStats(cmId: number, token: string, onFail?: RecordFailure) {
   const stats: Record<string, number | null> = {
     spotify_followers: null,
     spotify_monthly_listeners: null,
@@ -101,8 +144,12 @@ async function getSocialStats(cmId: number, token: string) {
       )
       if (res.ok) {
         responses[path] = await res.json()
+      } else {
+        onFail?.(path, cmId, `HTTP ${res.status}`)
       }
-    } catch {}
+    } catch (err: any) {
+      onFail?.(path, cmId, `threw: ${err?.message || 'unknown'}`)
+    }
     await sleep(200)
   }
 
@@ -116,16 +163,8 @@ async function getSocialStats(cmId: number, token: string) {
   return stats
 }
 
-// ── Instagram audience (the big one — has brand affinities) ──
-async function getInstagramAudience(cmId: number, token: string) {
-  const res = await fetch(
-    `https://api.chartmetric.com/api/artist/${cmId}/instagram-audience-stats`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  )
-  if (!res.ok) return null
-  const data = await res.json()
-  return data?.obj || null
-}
+// Instagram audience (demographics + brand/sector affinities) comes from the
+// shared helper in @/lib/chartmetric (getInstagramAudience), imported above.
 
 // ── Helpers ───────────────────────────────────────────
 function sleep(ms: number) {
@@ -317,17 +356,23 @@ export async function POST(request: Request) {
     // Pass ?ids=123,456 to sync specific artists
     // Pass ?force=true to re-sync artists that already have cm_last_refreshed_at
     // Pass ?nullsocials=true to only sync artists missing social data
+    // Pass ?monthlyonly=true to surgically backfill ONLY spotify_monthly_listeners
+    //   (one stat/spotify call each, fill-only, does NOT bump cm_last_refreshed_at)
     const url = new URL(request.url)
     const limit = parseInt(url.searchParams.get('limit') || '999')
     const idsParam = url.searchParams.get('ids')
     const force = url.searchParams.get('force') === 'true'
     const nullSocials = url.searchParams.get('nullsocials') === 'true'
+    const monthlyOnly = url.searchParams.get('monthlyonly') === 'true'
 
     let query = supabase.from('intel_artists').select('chartmetric_id, name')
 
     if (idsParam) {
       const ids = idsParam.split(',').map(Number).filter(n => !isNaN(n))
       query = query.in('chartmetric_id', ids)
+    } else if (monthlyOnly) {
+      // Default cohort for the monthly-only sweep: has socials but null monthly listeners
+      query = query.is('spotify_monthly_listeners', null).not('spotify_followers', 'is', null)
     } else if (nullSocials) {
       query = query.is('spotify_followers', null)
     } else if (!force) {
@@ -341,9 +386,68 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'All artists already synced', count: 0 })
     }
 
+    // ── Surgical monthly-listeners-only sweep ──
+    // Updates ONLY spotify_monthly_listeners (+ updated_at). Never touches
+    // demographics/socials/affinities and never bumps cm_last_refreshed_at, so a
+    // partial pull isn't misrepresented as a full refresh (Never-Do rule 16).
+    // Fill-only: skips artists whose monthly listeners are already populated.
+    if (monthlyOnly) {
+      const token = await getCMToken()
+      const tracker = makeFailureTracker()
+      let updated = 0
+      let stillNull = 0
+      for (const artist of artists) {
+        const cmId = artist.chartmetric_id
+        try {
+          const res = await fetch(`https://api.chartmetric.com/api/artist/${cmId}/stat/spotify`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+          if (!res.ok) {
+            tracker.record('stat/spotify', cmId, `HTTP ${res.status}`)
+            stillNull++
+            await sleep(300)
+            continue
+          }
+          const data = await res.json()
+          const monthly = latestStatValue(data?.obj?.listeners)
+          if (monthly == null) {
+            stillNull++
+          } else {
+            const { error: updErr } = await supabase
+              .from('intel_artists')
+              .update({ spotify_monthly_listeners: monthly, updated_at: new Date().toISOString() })
+              .eq('chartmetric_id', cmId)
+              .is('spotify_monthly_listeners', null) // fill-only: never clobber
+            if (updErr) {
+              tracker.record('db-update', cmId, updErr.message)
+              stillNull++
+            } else {
+              updated++
+            }
+          }
+        } catch (err: any) {
+          tracker.record('stat/spotify', cmId, `threw: ${err?.message || 'unknown'}`)
+          stillNull++
+        }
+        await sleep(300)
+      }
+      const cmCallFailures = Object.values(tracker.counts).reduce((a, b) => a + b, 0)
+      if (cmCallFailures > 0) console.error(`[CM MONTHLY-ONLY] ${cmCallFailures} failures:`, tracker.counts)
+      return NextResponse.json({
+        success: true,
+        mode: 'monthlyonly',
+        total: artists.length,
+        updated,
+        still_null: stillNull,
+        cm_call_failures: cmCallFailures,
+        failures_by_endpoint: tracker.counts,
+      })
+    }
+
     console.log(`Syncing ${artists.length} artists from Chartmetric...`)
 
     const token = await getCMToken()
+    const tracker = makeFailureTracker()
     let synced = 0
     let failed = 0
     let noAudience = 0
@@ -353,11 +457,11 @@ export async function POST(request: Request) {
       try {
         // Fetch all data in parallel where possible
         const [meta, careerData, socialStats, audience, spotifyId] = await Promise.all([
-          getArtistMeta(cmId, token),
-          getCareerData(cmId, token),
-          getSocialStats(cmId, token),
-          getInstagramAudience(cmId, token),
-          getSpotifyArtistId(cmId, token),
+          getArtistMeta(cmId, token, tracker.record),
+          getCareerData(cmId, token, tracker.record),
+          getSocialStats(cmId, token, tracker.record),
+          getInstagramAudience(cmId, token, (detail) => tracker.record('instagram-audience-stats', cmId, detail)),
+          getSpotifyArtistId(cmId, token, tracker.record),
         ])
 
         // Fetch last album release from Spotify (for album cycle tracking)
@@ -484,12 +588,21 @@ export async function POST(request: Request) {
       }
     }
 
+    // Per-endpoint failure summary — a spike here is the alarm that CM calls
+    // are erroring rather than returning data. Empty-but-200 is NOT counted.
+    const cmCallFailures = Object.values(tracker.counts).reduce((a, b) => a + b, 0)
+    if (cmCallFailures > 0) {
+      console.error(`[CM SYNC] ${cmCallFailures} CM call failures this run:`, tracker.counts)
+    }
+
     return NextResponse.json({
       success: true,
       total: artists.length,
       synced,
       no_audience_data: noAudience,
       failed,
+      cm_call_failures: cmCallFailures,
+      failures_by_endpoint: tracker.counts,
     })
   } catch (err: any) {
     console.error('CM sync failed:', err)
