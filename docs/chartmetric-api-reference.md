@@ -34,12 +34,12 @@ GET /api/artist/{cmId}/stat/tiktok
 ```
 **Extract patterns:**
 - `spotify_followers` → `response.obj.followers[0].value`
-- `spotify_monthly_listeners` → `response.obj.monthly_listeners[0].value`
+- `spotify_monthly_listeners` → `response.obj.listeners` (a time series — take the latest point by `timestp`, preferring `is_interpolated === false`). There is NO `monthly_listeners` key; the monthly-listener data lives in `listeners`. Use the shared `latestStatValue()` helper in `src/lib/chartmetric.ts`.
 - `instagram_followers` → `response.obj.followers[0].value`
 - `youtube_subscribers` → `response.obj.subscribers[0].value`
 - `tiktok_followers` → `response.obj.followers[0].value`
 
-**IMPORTANT:** Spotify endpoint returns BOTH followers and monthly_listeners. Only 4 API calls needed for all 5 stats (Spotify, Instagram, YouTube, TikTok).
+**IMPORTANT:** Spotify endpoint returns BOTH followers and listeners (monthly listeners). Only 4 API calls needed for all 5 stats (Spotify, Instagram, YouTube, TikTok).
 
 ### 3. Career Stage
 ```
@@ -55,25 +55,22 @@ GET /api/artist/{cmId}/urls
 **Returns:** Array of `{ domain, url[] }` objects
 **Spotify ID extraction:** Find `domain === 'spotify'`, parse ID from URL: `https://open.spotify.com/artist/{SPOTIFY_ID}`
 
-### 5. Brand Affinities (Instagram audience)
-```
-GET /api/artist/{cmId}/instagram-audience-data?field=brandAffinity
-```
-**Returns:** Array of `{ id, name, affinity, followers, category }`
-**Filter:** Only store `affinity >= 1.0`
-
-### 6. Sector/Interest Affinities (Instagram audience)
-```
-GET /api/artist/{cmId}/instagram-audience-data?field=interests
-```
-**Returns:** Array of `{ id, name, affinity }`
-**Filter:** Only store `affinity >= 1.0`
-
-### 7. Instagram Audience Demographics
+### 5–7. Instagram Audience — Demographics, Brands & Sectors (ONE endpoint)
 ```
 GET /api/artist/{cmId}/instagram-audience-stats
 ```
-**Returns:** `audience_genders`, `audience_genders_per_age`, `audience_ethnicities`, `audience_geo`
+**⚠️ Do NOT use `instagram-audience-data?field=…` — that endpoint 404s (returns HTML) and was the root cause of the June 2026 enrichment gap (null demographics / monthly listeners / empty affinities). All audience data comes from `instagram-audience-stats` in a single call.**
+
+**Returns (under `obj`):**
+- `audience_genders` → `[{ code: 'male'|'female', weight }]` (overall gender split). May be empty even when per-age data exists — fall back to summing `audience_genders_per_age`.
+- `audience_genders_per_age` → `[{ code: '13-17'|'18-24'|…, male, female }]` (age buckets)
+- `audience_ethnicities` → `[{ code, name, weight }]`
+- `top_countries` → `[{ name, code, percent, followers }]`
+- `audience_brand_affinities` → `[{ id, name, affinity, weight, category }]` — store `affinity >= 1.0`
+- `audience_interests` → `[{ id, name, affinity }]` (sectors) — store `affinity >= 1.0`
+- `followers` → Instagram follower count
+
+**Use the shared helpers in `src/lib/chartmetric.ts`** (`getInstagramAudience`, `extractDemographics`, `extractBrandAffinities`, `extractSectorAffinities`) rather than re-parsing inline.
 
 ### 8. Artist Search
 ```

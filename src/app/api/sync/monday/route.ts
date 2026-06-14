@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { createServiceClient } from '@/lib/supabase'
+import {
+  latestStatValue,
+  getInstagramAudience,
+  extractDemographics,
+  extractBrandAffinities,
+  extractSectorAffinities,
+} from '@/lib/chartmetric'
 
 const BOARD_ID = '2696356409'
 const CRM_BOARD_ID = '2696356486'
@@ -715,26 +722,14 @@ async function enrichNewArtists(testNames?: string[], pendingLinks: PendingLink[
       cmCalls++
       const career = careerRes.ok ? (await careerRes.json()).obj?.[0] : undefined
 
-      // Brand affinities — 404s for artists without IG audience data; that must
-      // not abort enrichment, so guard the parse and default to no affinities.
+      // Instagram audience — one call returns demographics + brand + sector
+      // affinities (instagram-audience-stats). Returns null when the artist has
+      // no IG audience data, which must not abort enrichment.
       await sleep(500)
-      const brandRes = await fetch(`${CM_BASE}/artist/${cmId}/instagram-audience-data?field=brandAffinity`, {
-        headers: { Authorization: `Bearer ${cmToken}` },
-      })
+      const audience = await getInstagramAudience(cmId, cmToken)
       cmCalls++
-      const brands = brandRes.ok
-        ? (((await brandRes.json()).obj || []) as any[]).filter((b: any) => (b.affinity || 0) >= 1.0)
-        : []
-
-      // Sector affinities — same: optional, 404s when no IG audience data exists
-      await sleep(500)
-      const sectorRes = await fetch(`${CM_BASE}/artist/${cmId}/instagram-audience-data?field=interests`, {
-        headers: { Authorization: `Bearer ${cmToken}` },
-      })
-      cmCalls++
-      const sectors = sectorRes.ok
-        ? (((await sectorRes.json()).obj || []) as any[]).filter((s: any) => (s.affinity || 0) >= 1.0)
-        : []
+      const brands = audience ? extractBrandAffinities(audience, cmId) : []
+      const sectors = audience ? extractSectorAffinities(audience, cmId) : []
 
       // Spotify ID from URLs
       await sleep(500)
@@ -746,14 +741,6 @@ async function enrichNewArtists(testNames?: string[], pendingLinks: PendingLink[
       const spotifyUrl = urls.find((u: any) => u.domain === 'spotify')?.url?.[0] || ''
       const spotifyId = spotifyUrl.match(/artist\/([a-zA-Z0-9]+)/)?.[1] || null
 
-      // Demographics — optional, 404s when no IG audience data exists
-      await sleep(500)
-      const demoRes = await fetch(`${CM_BASE}/artist/${cmId}/instagram-audience-data?field=demographics`, {
-        headers: { Authorization: `Bearer ${cmToken}` },
-      })
-      cmCalls++
-      const demo = demoRes.ok ? (await demoRes.json()).obj : null
-
       // Social stats from /stat/ endpoints (profile does NOT return these)
       const socialStats: Record<string, number | null> = {
         spotify_followers: null,
@@ -763,7 +750,7 @@ async function enrichNewArtists(testNames?: string[], pendingLinks: PendingLink[
         tiktok_followers: null,
       }
       const statEndpoints = [
-        { path: 'stat/spotify', extract: (d: any) => { socialStats.spotify_followers = d?.obj?.followers?.[0]?.value ?? null; socialStats.spotify_monthly_listeners = d?.obj?.monthly_listeners?.[0]?.value ?? null } },
+        { path: 'stat/spotify', extract: (d: any) => { socialStats.spotify_followers = d?.obj?.followers?.[0]?.value ?? null; socialStats.spotify_monthly_listeners = latestStatValue(d?.obj?.listeners) } },
         { path: 'stat/instagram', extract: (d: any) => { socialStats.instagram_followers = d?.obj?.followers?.[0]?.value ?? null } },
         { path: 'stat/youtube_channel', extract: (d: any) => { socialStats.youtube_subscribers = d?.obj?.subscribers?.[0]?.value ?? null } },
         { path: 'stat/tiktok', extract: (d: any) => { socialStats.tiktok_followers = d?.obj?.followers?.[0]?.value ?? null } },
@@ -788,8 +775,6 @@ async function enrichNewArtists(testNames?: string[], pendingLinks: PendingLink[
         career_stage: career?.stage || null,
         primary_genre: p.artist_genres?.[0]?.name || null,
         ...socialStats,
-        audience_male_pct: p.sp_fans_male_pct || null,
-        audience_female_pct: p.sp_fans_female_pct || null,
         spotify_artist_id: spotifyId,
         source: 'monday',
         discovery_status: 'pipeline',
@@ -797,15 +782,14 @@ async function enrichNewArtists(testNames?: string[], pendingLinks: PendingLink[
         cm_last_refreshed_at: new Date().toISOString(),
       }
 
-      // Add demographics if available
-      if (demo?.ages) {
-        const ages = demo.ages
-        artistData.age_13_17_pct = ages['13-17'] ?? null
-        artistData.age_18_24_pct = ages['18-24'] ?? null
-        artistData.age_25_34_pct = ages['25-34'] ?? null
-        artistData.age_35_44_pct = ages['35-44'] ?? null
-        artistData.age_45_64_pct = ages['45-64'] ?? null
-        artistData.age_65_plus_pct = ages['65+'] ?? null
+      // Demographics from the audience payload (gender, age, ethnicity, top
+      // countries) via the shared extractor — only merge non-null fields.
+      if (audience) {
+        if (audience.followers) artistData.instagram_followers = audience.followers
+        const demographics = extractDemographics(audience)
+        for (const [key, val] of Object.entries(demographics)) {
+          if (val !== null && val !== undefined) artistData[key] = val
+        }
       }
 
       const { error: insertError } = await supabase.from('intel_artists').insert(artistData)
@@ -833,29 +817,14 @@ async function enrichNewArtists(testNames?: string[], pendingLinks: PendingLink[
       }
 
       // Insert brand affinities
+      // brands/sectors are already full row objects from the shared extractors
       if (brands.length) {
-        await supabase.from('intel_brand_affinities').insert(
-          brands.map((b: any) => ({
-            chartmetric_id: cmId,
-            brand_id: b.id || 0,
-            brand_name: b.name,
-            affinity_scale: b.affinity,
-            follower_count: b.followers || null,
-            interest_category: b.category || null,
-          }))
-        )
+        await supabase.from('intel_brand_affinities').insert(brands)
       }
 
       // Insert sector affinities
       if (sectors.length) {
-        await supabase.from('intel_sector_affinities').insert(
-          sectors.map((s: any) => ({
-            chartmetric_id: cmId,
-            sector_id: s.id || 0,
-            sector_name: s.name,
-            affinity_scale: s.affinity,
-          }))
-        )
+        await supabase.from('intel_sector_affinities').insert(sectors)
       }
 
       enriched++

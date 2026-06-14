@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { getSpotifyToken, getLatestAlbum } from '@/lib/spotify'
+import { latestStatValue, extractDemographics } from '@/lib/chartmetric'
 
 export const maxDuration = 300
 
@@ -82,7 +83,7 @@ async function getSocialStats(cmId: number, token: string) {
 
   const endpoints = [
     { key: 'spotify_followers', path: `stat/spotify`, extract: (d: any) => d?.obj?.followers?.[0]?.value },
-    { key: 'spotify_monthly_listeners', path: `stat/spotify`, extract: (d: any) => d?.obj?.monthly_listeners?.[0]?.value },
+    { key: 'spotify_monthly_listeners', path: `stat/spotify`, extract: (d: any) => latestStatValue(d?.obj?.listeners) },
     { key: 'instagram_followers', path: `stat/instagram`, extract: (d: any) => d?.obj?.followers?.[0]?.value },
     { key: 'youtube_subscribers', path: `stat/youtube_channel`, extract: (d: any) => d?.obj?.subscribers?.[0]?.value },
     { key: 'tiktok_followers', path: `stat/tiktok`, extract: (d: any) => d?.obj?.followers?.[0]?.value },
@@ -129,21 +130,6 @@ async function getInstagramAudience(cmId: number, token: string) {
 // ── Helpers ───────────────────────────────────────────
 function sleep(ms: number) {
   return new Promise(r => setTimeout(r, ms))
-}
-
-function parseFloat2(val: any): number | null {
-  const n = parseFloat(val)
-  return isNaN(n) ? null : n
-}
-
-function getEthnicityPct(ethnicities: any[], code: string): number {
-  return parseFloat(ethnicities?.find((e: any) => e.code === code)?.weight || '0')
-}
-
-function getAgePct(ageGender: any[], ageCode: string): number {
-  const row = ageGender?.find((r: any) => r.code === ageCode)
-  if (!row) return 0
-  return parseFloat(row.male || '0') + parseFloat(row.female || '0')
 }
 
 // ── Main sync ─────────────────────────────────────────
@@ -412,34 +398,19 @@ export async function POST(request: Request) {
 
         // If we got audience data, add demographics
         if (audience) {
-          const maleGender = audience.audience_genders?.find((g: any) => g.code === 'male')
-          const femaleGender = audience.audience_genders?.find((g: any) => g.code === 'female')
-          const ethnicities = audience.audience_ethnicities || []
-          const ageGender = audience.audience_genders_per_age || []
-          const topCountries = (audience.top_countries || []).slice(0, 10).map((c: any) => ({
-            country: c.name,
-            code: c.code,
-            pct: parseFloat(c.percent || '0'),
-          }))
-
           // Override instagram followers with audience data if available
           if (audience.followers) {
             artistUpdate.instagram_followers = audience.followers
           }
 
-          artistUpdate.audience_male_pct = parseFloat2(maleGender?.weight)
-          artistUpdate.audience_female_pct = parseFloat2(femaleGender?.weight)
-          artistUpdate.age_13_17_pct = getAgePct(ageGender, '13-17')
-          artistUpdate.age_18_24_pct = getAgePct(ageGender, '18-24')
-          artistUpdate.age_25_34_pct = getAgePct(ageGender, '25-34')
-          artistUpdate.age_35_44_pct = getAgePct(ageGender, '35-44')
-          artistUpdate.age_45_64_pct = getAgePct(ageGender, '45-64')
-          artistUpdate.age_65_plus_pct = getAgePct(ageGender, '65+')
-          artistUpdate.audience_ethnicity = ethnicities.reduce((acc: any, e: any) => {
-            acc[e.code] = parseFloat(e.weight || '0')
-            return acc
-          }, {})
-          artistUpdate.top_countries = topCountries
+          // Shared extractor: gender from audience_genders with a fallback to
+          // summing audience_genders_per_age when that array is empty. Only
+          // merge non-null fields so a blank sub-field never clobbers existing
+          // good data (COALESCE-style fill).
+          const demographics = extractDemographics(audience)
+          for (const [key, val] of Object.entries(demographics)) {
+            if (val !== null && val !== undefined) artistUpdate[key] = val
+          }
 
           // ── Brand affinities (only >= 1.0x) ──
           const brandAffinities = (audience.audience_brand_affinities || [])
