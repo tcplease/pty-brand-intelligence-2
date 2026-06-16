@@ -27,7 +27,7 @@ import { resurfaceIfHidden } from '@/lib/signals'
 import { scrapeBillboard, type CalendarRelease } from '@/lib/scrapers/billboard'
 import { scrapeGenius } from '@/lib/scrapers/genius'
 import { scrapePitchfork } from '@/lib/scrapers/pitchfork'
-import { buildMatcherIndex, matchName, normalizeName, type MatcherIndex } from '@/lib/release-matcher'
+import { buildMatcherIndex, matchName, normalizeName, isNoiseRelease, careerStageAllowed, type MatcherIndex } from '@/lib/release-matcher'
 
 type SourceKey = 'billboard' | 'genius_album' | 'genius_single' | 'pitchfork'
 const ALL_SOURCES: SourceKey[] = ['billboard', 'genius_album', 'genius_single', 'pitchfork']
@@ -47,6 +47,20 @@ export const maxDuration = 300
 // than ~30d are noise.
 const FUTURE_DAYS = 365
 const RECENT_DAYS = 30
+
+// Cap on inline CM career calls per run for matched-but-unenriched artists.
+const CAREER_BACKFILL_CAP = 25
+
+async function getCMToken(): Promise<string> {
+  const res = await fetch('https://api.chartmetric.com/api/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshtoken: process.env.CHARTMETRIC_TOKEN }),
+  })
+  const data = await res.json()
+  if (!data.token) throw new Error('Failed to get CM token')
+  return data.token
+}
 
 export async function GET(request: Request) {
   const url = new URL(request.url)
@@ -252,6 +266,14 @@ async function runSync(request: Request, opts: SyncOptions): Promise<NextRespons
         console.error('[release-calendar] pitchfork scrape failed:', msg)
       }
     }
+
+    // ── Noise / reissue filter (applies to every scraper) ──
+    // Drop reissues, deluxe/anniversary editions, box sets, soundtracks, live
+    // albums, compilations, Various Artists, etc. before matching/surfacing.
+    const preNoise = allReleases.length
+    allReleases = allReleases.filter(r => !isNoiseRelease(r.artist_name_raw, r.album_name))
+    const noiseDropped = preNoise - allReleases.length
+    console.log(`[release-calendar] noise filter: dropped ${noiseDropped} of ${preNoise} releases`)
 
     // First match pass against existing roster
     let matched: Array<CalendarRelease & { chartmetric_id: number; matched_via: 'alias' | 'exact' }> = []
@@ -466,14 +488,58 @@ async function runSync(request: Request, opts: SyncOptions): Promise<NextRespons
       return rd >= recentLimit && rd <= futureLimit
     })
 
+    // ── Career-stage gate (mid-level+) ──
+    // Read career_stage for the in-window matched artists. career_stage in
+    // intel_artists is the negative cache: developing/undiscovered artists are
+    // read from the DB and dropped without a CM call. Only matched-but-
+    // unenriched (null career_stage) artists get one CM career call each
+    // (capped), filled back into intel_artists (fill-only). Still-null → dropped.
+    const careerById = new Map<number, string | null>()
+    {
+      const ids = [...new Set(inWindow.map(r => r.chartmetric_id))]
+      for (let i = 0; i < ids.length; i += 200) {
+        const { data } = await supabase
+          .from('intel_artists')
+          .select('chartmetric_id, career_stage')
+          .in('chartmetric_id', ids.slice(i, i + 200))
+        for (const a of data ?? []) careerById.set(a.chartmetric_id, a.career_stage)
+      }
+      const nullIds = ids.filter(id => !careerById.get(id))
+      if (nullIds.length > 0) {
+        try {
+          const token = await getCMToken()
+          for (const id of nullIds.slice(0, CAREER_BACKFILL_CAP)) {
+            try {
+              const res = await fetch(`https://api.chartmetric.com/api/artist/${id}/career?limit=1`, {
+                headers: { Authorization: `Bearer ${token}` },
+              })
+              if (!res.ok) continue
+              const stage = (await res.json())?.obj?.[0]?.stage ?? null
+              if (stage) {
+                careerById.set(id, stage)
+                // fill-don't-clobber: only write when currently null
+                await supabase.from('intel_artists').update({ career_stage: stage }).eq('chartmetric_id', id).is('career_stage', null)
+              }
+            } catch { /* skip — gate drops it as null */ }
+            await new Promise(res => setTimeout(res, 300))
+          }
+        } catch (err) {
+          console.error('[release-calendar] career backfill token failed:', err instanceof Error ? err.message : err)
+        }
+      }
+    }
+
     // Pre-fetch existing activity_log keys to dedupe (chartmetric_id, album_name, release_date)
     const existingKeys = await loadExistingPresaveKeys(supabase, inWindow.map(r => r.chartmetric_id))
 
     let presavesInserted = 0
     let presaveErrors = 0
     let resurfaced = 0
+    let careerGateSkipped = 0
     for (const r of inWindow) {
       if (!r.release_date) continue
+      // Career-stage gate: surface only mid-level+ artists
+      if (!careerStageAllowed(careerById.get(r.chartmetric_id))) { careerGateSkipped++; continue }
       const dedupeKey = `${r.chartmetric_id}|${normalizeAlbumKey(r.album_name)}|${r.release_date}`
       if (existingKeys.has(dedupeKey)) continue
 
@@ -530,6 +596,8 @@ async function runSync(request: Request, opts: SyncOptions): Promise<NextRespons
       calendar_errors: calendarErrors,
       first_upsert_error: firstUpsertError,
       in_window: inWindow.length,
+      noise_dropped: noiseDropped,
+      career_gate_skipped: careerGateSkipped,
       presaves_inserted: presavesInserted,
       presave_errors: presaveErrors,
       resurfaced,
