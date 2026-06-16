@@ -197,6 +197,13 @@ Key fields: `chartmetric_id` (FK), `event_type` ("festival_added"|"album_presave
 - Addresses in `artist_contacts` are stored as structured fields (street/city/state/zip/country), not a single string
 - `activity_log` has two date fields: `event_date` (the actual event) and `created_at` (when detected) — both are displayed in the UI
 
+### Table naming: entity tables are `intel_`-prefixed; the signal subsystem is NOT
+The "always use `intel_`" rule applies to **entity** tables (`intel_artists`, `intel_monday_items`, `intel_brand_affinities`, `intel_sector_affinities`, `intel_artist_contacts`). The **signal subsystem lives on legacy UNPREFIXED tables by design** and is the live data:
+- `activity_log` — all signals (`album_presave`, `album_cycle_signal`, `festival_added`, `metric_spike`, `stage_change`/resurface). The `intel_activity_log` table is **empty** — do not use it.
+- `festival_appearances` — festival signals. `intel_festival_appearances` is **empty** — do not use it.
+- `release_calendar` — scraped release rows (Billboard/Genius/Pitchfork/Consequence).
+Every signal path (release-calendar, festivals, spotify, album-cycle, `lib/signals.ts`, `/api/discovery`) reads/writes these unprefixed tables. Radar reads them. **These signal tables are NOT covered by the CM wipe-guard triggers** (those protect the `intel_` entity/affinity tables). Still snapshot before any bulk write, but don't expect a trigger to block a bad delete here.
+
 ---
 
 ## API Integrations
