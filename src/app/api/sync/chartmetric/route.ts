@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { getSpotifyToken, getLatestAlbum } from '@/lib/spotify'
-import { latestStatValue, extractDemographics, getInstagramAudience } from '@/lib/chartmetric'
+import { latestStatValue, extractDemographics, getInstagramAudience, extractSocialUrls, type SocialUrls } from '@/lib/chartmetric'
 
 export const maxDuration = 300
 
@@ -69,25 +69,24 @@ async function getArtistMeta(cmId: number, token: string, onFail?: RecordFailure
   }
 }
 
-// ── Spotify artist ID (from /urls endpoint) ──────────
-async function getSpotifyArtistId(cmId: number, token: string, onFail?: RecordFailure): Promise<string | null> {
+// ── Social URLs + Spotify artist ID (from /urls endpoint) ──────────
+// One /urls call yields the Spotify id AND the Instagram/YouTube/TikTok profile
+// URLs (all full + openable), so social links cost zero extra CM calls.
+async function getArtistUrls(cmId: number, token: string, onFail?: RecordFailure): Promise<SocialUrls> {
+  const empty: SocialUrls = { spotify_artist_id: null, instagram_url: null, youtube_url: null, tiktok_url: null }
   try {
     const res = await fetch(`https://api.chartmetric.com/api/artist/${cmId}/urls`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) {
       onFail?.('urls', cmId, `HTTP ${res.status}`)
-      return null
+      return empty
     }
     const data = await res.json()
-    const spotifyEntry = (data.obj || []).find((u: any) => u.domain === 'spotify')
-    if (!spotifyEntry?.url?.[0]) return null
-    // Parse ID from URL: https://open.spotify.com/artist/XXXXX
-    const match = spotifyEntry.url[0].match(/\/artist\/([a-zA-Z0-9]+)/)
-    return match ? match[1] : null
+    return extractSocialUrls(data.obj || [])
   } catch (err: any) {
     onFail?.('urls', cmId, `threw: ${err?.message || 'unknown'}`)
-    return null
+    return empty
   }
 }
 
@@ -251,29 +250,16 @@ export async function GET(request: Request) {
     const career = await getCareerData(cmId, token)
     const socialStats = await getSocialStats(cmId, token)
 
-    // Get Spotify ID from URLs
-    let spotifyArtistId: string | null = null
-    try {
-      const urlsRes = await fetch(`https://api.chartmetric.com/api/artist/${cmId}/urls`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (urlsRes.ok) {
-        const urlsData = (await urlsRes.json())?.obj || []
-        const spEntry = urlsData.find((u: any) => u.domain === 'spotify') // eslint-disable-line @typescript-eslint/no-explicit-any
-        if (spEntry?.url?.[0]) {
-          const spMatch = spEntry.url[0].match(/artist\/([a-zA-Z0-9]+)/)
-          if (spMatch) spotifyArtistId = spMatch[1]
-        }
-      }
-    } catch { /* skip */ }
+    // Get Spotify ID + social profile URLs from /urls (one call)
+    const urls = await getArtistUrls(cmId, token)
 
     // Fetch last album release from Spotify (for album cycle tracking)
     let lastAlbumReleaseDate: string | null = null
     let lastAlbumName: string | null = null
-    if (spotifyArtistId) {
+    if (urls.spotify_artist_id) {
       try {
         const spToken = await getSpotifyToken()
-        const latest = await getLatestAlbum(spToken, spotifyArtistId)
+        const latest = await getLatestAlbum(spToken, urls.spotify_artist_id)
         if (latest) {
           lastAlbumReleaseDate = latest.release_date
           lastAlbumName = latest.name
@@ -288,7 +274,10 @@ export async function GET(request: Request) {
       cm_score: meta?.cm_score || null,
       career_stage: career?.stage || null,
       primary_genre: meta?.primary_genre || null,
-      spotify_artist_id: spotifyArtistId,
+      spotify_artist_id: urls.spotify_artist_id,
+      instagram_url: urls.instagram_url,
+      youtube_url: urls.youtube_url,
+      tiktok_url: urls.tiktok_url,
       last_album_release_date: lastAlbumReleaseDate,
       last_album_name: lastAlbumName,
       source: 'manual',
@@ -364,12 +353,16 @@ export async function POST(request: Request) {
     const force = url.searchParams.get('force') === 'true'
     const nullSocials = url.searchParams.get('nullsocials') === 'true'
     const monthlyOnly = url.searchParams.get('monthlyonly') === 'true'
+    const urlsOnly = url.searchParams.get('urlsonly') === 'true'
 
     let query = supabase.from('intel_artists').select('chartmetric_id, name')
 
     if (idsParam) {
       const ids = idsParam.split(',').map(Number).filter(n => !isNaN(n))
       query = query.in('chartmetric_id', ids)
+    } else if (urlsOnly) {
+      // Default cohort for the URL backfill: artists missing the Instagram URL
+      query = query.is('instagram_url', null)
     } else if (monthlyOnly) {
       // Default cohort for the monthly-only sweep: has socials but null monthly listeners
       query = query.is('spotify_monthly_listeners', null).not('spotify_followers', 'is', null)
@@ -384,6 +377,51 @@ export async function POST(request: Request) {
     if (fetchError) throw new Error(fetchError.message)
     if (!artists?.length) {
       return NextResponse.json({ message: 'All artists already synced', count: 0 })
+    }
+
+    // ── Surgical social-URL-only backfill ──
+    // One /urls call per artist; fills instagram_url/youtube_url/tiktok_url
+    // (+ spotify_artist_id) ONLY where currently null (fill-don't-clobber).
+    // Does NOT bump cm_last_refreshed_at (partial pull, Never-Do rule 16).
+    if (urlsOnly) {
+      const token = await getCMToken()
+      const tracker = makeFailureTracker()
+      let updated = 0
+      let noUrls = 0
+      for (const artist of artists) {
+        const cmId = artist.chartmetric_id
+        const social = await getArtistUrls(cmId, token, tracker.record)
+        const patch: Record<string, string> = {}
+        if (social.instagram_url) patch.instagram_url = social.instagram_url
+        if (social.youtube_url) patch.youtube_url = social.youtube_url
+        if (social.tiktok_url) patch.tiktok_url = social.tiktok_url
+        if (social.spotify_artist_id) patch.spotify_artist_id = social.spotify_artist_id
+        if (Object.keys(patch).length === 0) { noUrls++; await sleep(300); continue }
+        patch.updated_at = new Date().toISOString()
+        // Fill-only: the protect_cm_data trigger already blocks clobbering a
+        // populated value, but we also avoid the write surfacing a no-op.
+        const { error: updErr } = await supabase
+          .from('intel_artists')
+          .update(patch)
+          .eq('chartmetric_id', cmId)
+        if (updErr) {
+          tracker.record('db-update', cmId, updErr.message)
+        } else {
+          updated++
+        }
+        await sleep(300)
+      }
+      const cmCallFailures = Object.values(tracker.counts).reduce((a, b) => a + b, 0)
+      if (cmCallFailures > 0) console.error(`[CM URLS-ONLY] ${cmCallFailures} failures:`, tracker.counts)
+      return NextResponse.json({
+        success: true,
+        mode: 'urlsonly',
+        total: artists.length,
+        updated,
+        no_urls: noUrls,
+        cm_call_failures: cmCallFailures,
+        failures_by_endpoint: tracker.counts,
+      })
     }
 
     // ── Surgical monthly-listeners-only sweep ──
@@ -456,21 +494,21 @@ export async function POST(request: Request) {
       const cmId = artist.chartmetric_id
       try {
         // Fetch all data in parallel where possible
-        const [meta, careerData, socialStats, audience, spotifyId] = await Promise.all([
+        const [meta, careerData, socialStats, audience, urls] = await Promise.all([
           getArtistMeta(cmId, token, tracker.record),
           getCareerData(cmId, token, tracker.record),
           getSocialStats(cmId, token, tracker.record),
           getInstagramAudience(cmId, token, (detail) => tracker.record('instagram-audience-stats', cmId, detail)),
-          getSpotifyArtistId(cmId, token, tracker.record),
+          getArtistUrls(cmId, token, tracker.record),
         ])
 
         // Fetch last album release from Spotify (for album cycle tracking)
         let lastAlbumReleaseDate: string | null = null
         let lastAlbumName: string | null = null
-        if (spotifyId) {
+        if (urls.spotify_artist_id) {
           try {
             const spToken = await getSpotifyToken()
-            const latest = await getLatestAlbum(spToken, spotifyId)
+            const latest = await getLatestAlbum(spToken, urls.spotify_artist_id)
             if (latest) {
               lastAlbumReleaseDate = latest.release_date
               lastAlbumName = latest.name
@@ -479,14 +517,17 @@ export async function POST(request: Request) {
         }
 
         // Build the artist update — only include non-null values
-        // so we never overwrite existing good data with null
+        // so we never overwrite existing good data with null (fill-don't-clobber)
         const rawUpdate: Record<string, any> = {
           name: meta?.name || artist.name,
           image_url: meta?.image_url,
           primary_genre: meta?.primary_genre,
           cm_score: meta?.cm_score,
           general_manager: meta?.general_manager,
-          spotify_artist_id: spotifyId,
+          spotify_artist_id: urls.spotify_artist_id,
+          instagram_url: urls.instagram_url,
+          youtube_url: urls.youtube_url,
+          tiktok_url: urls.tiktok_url,
           career_stage: careerData.stage,
           last_album_release_date: lastAlbumReleaseDate,
           last_album_name: lastAlbumName,

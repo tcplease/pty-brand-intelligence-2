@@ -167,6 +167,31 @@ export function extractSectorAffinities(audience: any, cmId: number): SectorAffi
     }))
 }
 
+export interface SocialUrls {
+  spotify_artist_id: string | null
+  instagram_url: string | null
+  youtube_url: string | null
+  tiktok_url: string | null
+}
+
+// Extract social profile URLs + the Spotify artist id from a CM /artist/:id/urls
+// `obj` array (entries of { domain, url: string[] }). CM returns full, openable
+// URLs for instagram/youtube/tiktok, so no handle→URL construction is needed.
+export function extractSocialUrls(urlsObj: any[]): SocialUrls {
+  const findUrl = (domain: string): string | null => {
+    const entry = (urlsObj || []).find((u: any) => u.domain === domain)
+    const url = Array.isArray(entry?.url) ? entry.url[0] : entry?.url
+    return typeof url === 'string' && url.startsWith('http') ? url : null
+  }
+  const spotifyUrl = findUrl('spotify')
+  return {
+    spotify_artist_id: spotifyUrl ? (spotifyUrl.match(/artist\/([a-zA-Z0-9]+)/)?.[1] ?? null) : null,
+    instagram_url: findUrl('instagram'),
+    youtube_url: findUrl('youtube'),
+    tiktok_url: findUrl('tiktok'),
+  }
+}
+
 // Fetch the instagram-audience-stats payload (demographics + brands + sectors
 // in one call). Returns the `obj` or null.
 //

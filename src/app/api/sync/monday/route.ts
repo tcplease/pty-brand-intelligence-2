@@ -7,6 +7,7 @@ import {
   extractDemographics,
   extractBrandAffinities,
   extractSectorAffinities,
+  extractSocialUrls,
 } from '@/lib/chartmetric'
 
 const BOARD_ID = '2696356409'
@@ -731,15 +732,14 @@ async function enrichNewArtists(testNames?: string[], pendingLinks: PendingLink[
       const brands = audience ? extractBrandAffinities(audience, cmId) : []
       const sectors = audience ? extractSectorAffinities(audience, cmId) : []
 
-      // Spotify ID from URLs
+      // Spotify ID + social profile URLs from /urls (one call)
       await sleep(500)
       const urlsRes = await fetch(`${CM_BASE}/artist/${cmId}/urls`, {
         headers: { Authorization: `Bearer ${cmToken}` },
       })
       cmCalls++
-      const urls: any[] = urlsRes.ok ? ((await urlsRes.json()).obj || []) : []
-      const spotifyUrl = urls.find((u: any) => u.domain === 'spotify')?.url?.[0] || ''
-      const spotifyId = spotifyUrl.match(/artist\/([a-zA-Z0-9]+)/)?.[1] || null
+      const socialUrls = extractSocialUrls(urlsRes.ok ? ((await urlsRes.json()).obj || []) : [])
+      const spotifyId = socialUrls.spotify_artist_id
 
       // Social stats from /stat/ endpoints (profile does NOT return these)
       const socialStats: Record<string, number | null> = {
@@ -776,6 +776,9 @@ async function enrichNewArtists(testNames?: string[], pendingLinks: PendingLink[
         primary_genre: p.artist_genres?.[0]?.name || null,
         ...socialStats,
         spotify_artist_id: spotifyId,
+        instagram_url: socialUrls.instagram_url,
+        youtube_url: socialUrls.youtube_url,
+        tiktok_url: socialUrls.tiktok_url,
         source: 'monday',
         discovery_status: 'pipeline',
         is_active: true,

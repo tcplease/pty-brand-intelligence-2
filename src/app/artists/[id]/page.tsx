@@ -116,6 +116,10 @@ interface ArtistDetail {
   instagram_followers: number | null
   youtube_subscribers: number | null
   tiktok_followers: number | null
+  spotify_artist_id: string | null
+  instagram_url: string | null
+  youtube_url: string | null
+  tiktok_url: string | null
   audience_male_pct: number | null
   audience_female_pct: number | null
   age_13_17_pct: number | null
@@ -750,6 +754,33 @@ Festival Appearances: ${activity.filter(a => a.event_type === 'festival_added').
                 <AnimatedStat key={s.label} label={s.label} value={s.raw} delay={i * 100} />
               ))}
             </div>
+
+            {/* Social profile links — tap to open; only rendered when present */}
+            {(() => {
+              const links = [
+                { label: 'Spotify', url: artist.spotify_artist_id ? `https://open.spotify.com/artist/${artist.spotify_artist_id}` : null },
+                { label: 'Instagram', url: artist.instagram_url },
+                { label: 'TikTok', url: artist.tiktok_url },
+                { label: 'YouTube', url: artist.youtube_url },
+              ].filter((l): l is { label: string; url: string } => !!l.url)
+              if (links.length === 0) return null
+              return (
+                <div className="flex items-center flex-wrap gap-2 mb-4">
+                  {links.map(l => (
+                    <a
+                      key={l.label}
+                      href={l.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors hover:text-white"
+                      style={{ borderColor: BORDER, color: W50 }}
+                    >
+                      {l.label} ↗
+                    </a>
+                  ))}
+                </div>
+              )
+            })()}
 
             {/* Career stage bar */}
             <div>
