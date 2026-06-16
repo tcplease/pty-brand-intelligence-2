@@ -27,15 +27,16 @@ import { resurfaceIfHidden } from '@/lib/signals'
 import { scrapeBillboard, type CalendarRelease } from '@/lib/scrapers/billboard'
 import { scrapeGenius } from '@/lib/scrapers/genius'
 import { scrapePitchfork } from '@/lib/scrapers/pitchfork'
+import { scrapeConsequence } from '@/lib/scrapers/consequence'
 import { buildMatcherIndex, matchName, normalizeName, isNoiseRelease, careerStageAllowed, type MatcherIndex } from '@/lib/release-matcher'
 
-type SourceKey = 'billboard' | 'genius_album' | 'genius_single' | 'pitchfork'
-const ALL_SOURCES: SourceKey[] = ['billboard', 'genius_album', 'genius_single', 'pitchfork']
+type SourceKey = 'billboard' | 'genius_album' | 'genius_single' | 'pitchfork' | 'consequence'
+const ALL_SOURCES: SourceKey[] = ['billboard', 'genius_album', 'genius_single', 'pitchfork', 'consequence']
 // genius_single is excluded: Genius's singles calendars have only the welcome
 // description annotated; the actual entry list is in the lyrics body, which
 // the API does not expose. Manual `?sources=genius_single` requests still
 // attempt it but yield 0 entries.
-const DEFAULT_SOURCES: SourceKey[] = ['billboard', 'genius_album', 'pitchfork']
+const DEFAULT_SOURCES: SourceKey[] = ['billboard', 'genius_album', 'pitchfork', 'consequence']
 
 export const maxDuration = 300
 
@@ -158,6 +159,9 @@ async function runDebug(request: Request): Promise<NextResponse> {
     } else if (source === 'pitchfork') {
       const r = await scrapePitchfork(year)
       releases = r.releases
+    } else if (source === 'consequence') {
+      const r = await scrapeConsequence(year)
+      releases = r.releases
     } else {
       return NextResponse.json({ error: `Unknown debug source: ${source}` }, { status: 400 })
     }
@@ -264,6 +268,19 @@ async function runSync(request: Request, opts: SyncOptions): Promise<NextRespons
         const msg = err instanceof Error ? err.message : String(err)
         sourceCounts.pitchfork = { count: 0, error: msg }
         console.error('[release-calendar] pitchfork scrape failed:', msg)
+      }
+    }
+
+    if (sources.includes('consequence')) {
+      try {
+        const r = await scrapeConsequence(year)
+        sourceCounts.consequence = { count: r.releases.length, error: r.fetched ? null : 'page fetch failed' }
+        allReleases = allReleases.concat(r.releases)
+        console.log(`[release-calendar] consequence scraped: ${r.releases.length} entries (fetched=${r.fetched})`)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        sourceCounts.consequence = { count: 0, error: msg }
+        console.error('[release-calendar] consequence scrape failed:', msg)
       }
     }
 

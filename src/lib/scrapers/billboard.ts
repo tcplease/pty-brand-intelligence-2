@@ -10,7 +10,7 @@
 import * as cheerio from 'cheerio'
 
 export interface CalendarRelease {
-  source: 'billboard' | 'genius_album' | 'genius_single' | 'pitchfork'
+  source: 'billboard' | 'genius_album' | 'genius_single' | 'pitchfork' | 'consequence'
   source_url: string
   artist_name_raw: string
   album_name: string
