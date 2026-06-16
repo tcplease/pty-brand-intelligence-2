@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { resurfaceIfHidden } from '@/lib/signals'
+import { getInstagramAudience, extractBrandAffinities, extractSectorAffinities } from '@/lib/chartmetric'
 
 const CM_REFRESH_TOKEN = process.env.CHARTMETRIC_TOKEN!
 const CM_BASE = 'https://api.chartmetric.com/api'
@@ -45,30 +46,43 @@ async function runFestivalSync(request: Request) {
 
     const token = await getCMToken()
 
-    // Step 1: Get upcoming large/mega US festivals
-    const festParams = new URLSearchParams({
-      'code2s[]': 'US',
-      sortColumn: 'startDate',
-      sortOrderDesc: 'false',
-      limit: String(festivalLimit),
-      offset: '0',
-    })
-    const festUrl = `${CM_BASE}/festival/list?${festParams.toString()}`
-
-    const festRes = await fetch(festUrl, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!festRes.ok) throw new Error(`Festival list failed: ${festRes.status}`)
-
-    const festData = await festRes.json()
-    const allFestivals = festData?.obj || []
-
-    // Filter to future only
+    // Step 1: Get UPCOMING large/mega US festivals.
+    // sortOrderDesc=false returned 2017-and-older first, so the today-filter
+    // dropped everything — that's why the monitor went dead in April.
+    // sortOrderDesc=true surfaces future festivals, but CM's ordering by the
+    // `date` field is NOT strictly monotonic (observed pages jumping 2024↔2026),
+    // so we do NOT early-break on a zero-future page (that could clip later
+    // pages). Instead paginate a capped number of pages and keep every
+    // future-dated festival; terminate on an empty/short page.
     const today = new Date().toISOString().split('T')[0]
-    const festivals = allFestivals.filter((f: any) => {
-      const d = f.date?.split(' ')[0]
-      return d && d >= today
-    })
+    const PAGE = Math.min(festivalLimit, 100)
+    const MAX_PAGES = 6
+    const festivals: any[] = []
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const festParams = new URLSearchParams({
+        'code2s[]': 'US',
+        sortColumn: 'startDate',
+        sortOrderDesc: 'true',
+        limit: String(PAGE),
+        offset: String(page * PAGE),
+      })
+      const festRes = await fetch(`${CM_BASE}/festival/list?${festParams.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!festRes.ok) {
+        if (page === 0) throw new Error(`Festival list failed: ${festRes.status}`)
+        break
+      }
+      const pageFests = (await festRes.json())?.obj || []
+      if (pageFests.length === 0) break
+      for (const f of pageFests) {
+        const d = f.date?.split(' ')[0]
+        if (d && d >= today) festivals.push(f)
+      }
+      if (pageFests.length < PAGE) break
+      await sleep(500)
+    }
+    console.log(`[festivals] collected ${festivals.length} future US festivals`)
 
     // Get existing data
     const { data: existingArtists } = await supabase
@@ -188,49 +202,18 @@ async function runFestivalSync(request: Request) {
           if (!error) {
             existingIds.add(cmId)
 
-            // Pull brand affinities
+            // Brand + sector affinities from the correct instagram-audience-stats
+            // payload (the old instagram-audience-data?field=… endpoint 404s).
             await sleep(500)
             try {
-              const brandRes = await fetch(`${CM_BASE}/artist/${cmId}/instagram-audience-data?field=brandAffinity`, {
-                headers: { Authorization: `Bearer ${token}` },
-              })
-              if (brandRes.ok) {
-                const brands = ((await brandRes.json())?.obj || []).filter((b: any) => b.affinity >= 1.0)
-                if (brands.length) {
-                  await supabase.from('intel_brand_affinities').insert(
-                    brands.map((b: any) => ({
-                      chartmetric_id: cmId,
-                      brand_id: b.id || 0,
-                      brand_name: b.name,
-                      affinity_scale: b.affinity,
-                      follower_count: b.followers || null,
-                      interest_category: b.category || null,
-                    }))
-                  )
-                }
+              const audience = await getInstagramAudience(cmId, token)
+              if (audience) {
+                const brands = extractBrandAffinities(audience, cmId)
+                if (brands.length) await supabase.from('intel_brand_affinities').insert(brands)
+                const sectors = extractSectorAffinities(audience, cmId)
+                if (sectors.length) await supabase.from('intel_sector_affinities').insert(sectors)
               }
-            } catch { /* skip */ }
-
-            // Pull sector affinities
-            await sleep(500)
-            try {
-              const sectorRes = await fetch(`${CM_BASE}/artist/${cmId}/instagram-audience-data?field=interests`, {
-                headers: { Authorization: `Bearer ${token}` },
-              })
-              if (sectorRes.ok) {
-                const sectors = ((await sectorRes.json())?.obj || []).filter((s: any) => s.affinity >= 1.0)
-                if (sectors.length) {
-                  await supabase.from('intel_sector_affinities').insert(
-                    sectors.map((s: any) => ({
-                      chartmetric_id: cmId,
-                      sector_id: s.id || 0,
-                      sector_name: s.name,
-                      affinity_scale: s.affinity,
-                    }))
-                  )
-                }
-              }
-            } catch { /* skip */ }
+            } catch { /* skip — non-critical */ }
             totalNew++
             await supabase.from('activity_log').insert({
               chartmetric_id: cmId,
