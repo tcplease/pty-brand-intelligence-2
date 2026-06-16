@@ -39,10 +39,13 @@ export async function resurfaceIfHidden(
 
   if (!isDismissed && !isLostOnly) return false
 
-  // Resurface: set discovery_status back to 'new'
+  // Resurface to the dedicated 'resurfaced' status (NOT 'new'). Monday-sourced
+  // artists are source 'monday'/'both', which fail the discovery query's
+  // source filter; the query admits discovery_status='resurfaced' regardless of
+  // source. Leave `source` untouched so the artist's origin is preserved.
   await supabase
     .from('intel_artists')
-    .update({ discovery_status: 'new' })
+    .update({ discovery_status: 'resurfaced' })
     .eq('chartmetric_id', chartmetricId)
 
   // Log the resurface event

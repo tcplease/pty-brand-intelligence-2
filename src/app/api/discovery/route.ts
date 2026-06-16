@@ -7,12 +7,16 @@ export async function GET(request: Request) {
     const period = url.searchParams.get('period') || 'week'
     const includeAll = url.searchParams.get('all') === 'true'
 
-    // Get discovery artists (not in pipeline, not dismissed)
+    // Get discovery artists. Two ways onto Radar:
+    //   • freshly discovered: discovery_status='new' AND a discovery source
+    //   • resurfaced: discovery_status='resurfaced' (any source — Monday-linked
+    //     Won/Lost/Fell-Off artists revived by a new signal; their source is
+    //     'monday'/'both', so they must NOT be gated by the source filter).
+    // Normal active Monday artists stay 'pipeline' → still excluded.
     const { data: artists, error: artistError } = await supabase
       .from('intel_artists')
       .select('*')
-      .eq('discovery_status', 'new')
-      .in('source', ['festival_signal', 'manual'])
+      .or('and(discovery_status.eq.new,source.in.(festival_signal,manual)),discovery_status.eq.resurfaced')
       .order('created_at', { ascending: false })
 
     if (artistError) throw artistError
@@ -90,6 +94,9 @@ export async function GET(request: Request) {
     const filtered = includeAll
       ? artists
       : artists.filter(a => {
+          // Resurfaced artists always show until acted on (promote/dismiss) —
+          // the resurface itself is the recency signal.
+          if (a.discovery_status === 'resurfaced') return true
           const isFestivalSourced = a.source === 'festival_signal' || a.source === 'both'
           if (isFestivalSourced && new Date(a.created_at).getTime() >= cutoffMs) return true
           const fests = festivalsByArtist[a.chartmetric_id] || []
