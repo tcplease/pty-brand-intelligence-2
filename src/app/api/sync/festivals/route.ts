@@ -269,8 +269,8 @@ async function runFestivalSync(request: Request) {
               event_date: festDate,
             })
 
-            // Resurface artist if they were dismissed or lost
-            await resurfaceIfHidden(supabase, cmId, 'festival_added')
+            // Resurface artist if they qualify (Won new-cycle / stale Lost-Fell Off)
+            await resurfaceIfHidden(supabase, cmId, 'festival_added', festDate)
           }
         }
       }

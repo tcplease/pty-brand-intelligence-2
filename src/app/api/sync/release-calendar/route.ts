@@ -504,7 +504,7 @@ async function runSync(request: Request, opts: SyncOptions): Promise<NextRespons
       existingKeys.add(dedupeKey)
 
       try {
-        const did = await resurfaceIfHidden(supabase, r.chartmetric_id, 'release_calendar')
+        const did = await resurfaceIfHidden(supabase, r.chartmetric_id, 'release_calendar', r.release_date)
         if (did) resurfaced++
       } catch (err) {
         console.error(`[release-calendar] resurface failed for cm=${r.chartmetric_id}:`, err)
