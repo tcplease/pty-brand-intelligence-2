@@ -536,6 +536,18 @@ export default function MerchPage() {
     <div className="min-h-screen" style={{ background: BG, fontFamily: "'Barlow', sans-serif" }}>
       <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@400;500;600;700&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet" />
 
+      {/* Main nav (shared app navigation; Merch active) */}
+      <nav className="flex items-center gap-4 px-4 md:px-6 py-3 border-b sticky top-0 z-50" style={{ background: BG, borderColor: BORDER }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/pty-logo.svg" alt="P&TY" className="h-9 w-auto shrink-0" />
+        <div className="h-4 w-px shrink-0" style={{ backgroundColor: BORDER }} />
+        <a href="/" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50 }}>Pipeline</a>
+        <a href="/radar" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50 }}>Radar</a>
+        <a href="/match" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50 }}>Match</a>
+        <a href="/live" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50 }}>Live</a>
+        <a href="/merch" className="text-sm py-3 px-3 block font-medium" style={{ color: Y }}>Merch</a>
+      </nav>
+
       {/* Header */}
       <div className="px-4 pt-8 sm:px-6 sm:pt-10 md:px-10 md:pt-12">
         <h1 className="text-[40px] sm:text-[64px] md:text-[96px] leading-[0.85] tracking-tight" style={{ fontFamily: "'Bebas Neue', sans-serif", color: '#f5f4f2' }}>

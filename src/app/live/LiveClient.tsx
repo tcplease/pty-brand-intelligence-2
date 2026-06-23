@@ -636,6 +636,7 @@ export default function LiveClient({ initial }: { initial: InitialState }) {
         <Link href="/radar" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Radar</Link>
         <Link href="/match" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Match</Link>
         <Link href="/live" className="text-sm py-3 px-3 block font-medium" style={{ color: Y, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(249,212,10,0.15)' }}>Live</Link>
+        <Link href="/merch" className="text-sm py-3 px-3 block transition-colors hover:text-white" style={{ color: W50, touchAction: 'manipulation', WebkitTapHighlightColor: 'rgba(255,255,255,0.1)' }}>Merch</Link>
         {step !== 'date' && (
           <button
             onClick={resetAll}

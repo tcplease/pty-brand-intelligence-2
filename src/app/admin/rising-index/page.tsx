@@ -128,6 +128,8 @@ export default function RisingIndexImport() {
           style={{ color: W50, touchAction: 'manipulation' }}>Match</Link>
         <Link href="/live" className="text-sm py-3 px-3 block transition-colors hover:text-white"
           style={{ color: W50, touchAction: 'manipulation' }}>Live</Link>
+        <Link href="/merch" className="text-sm py-3 px-3 block transition-colors hover:text-white"
+          style={{ color: W50, touchAction: 'manipulation' }}>Merch</Link>
       </nav>
 
       <div className="max-w-3xl mx-auto px-4 py-8">
