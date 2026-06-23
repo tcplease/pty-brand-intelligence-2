@@ -88,6 +88,33 @@ export function passesStateFilter(
   return s != null && selectedStates.has(s) // stateful → must match a selected state
 }
 
+// ── Career-stage filter — DEFINED ONCE (same discipline as the state rule) ────
+// Canonical tiers, EXACTLY the lowercase values stored in intel_artists. Display casing
+// differs across the app — NEVER filter against a Title-Cased label (the Export Report
+// "Mid-Level" vs DB "mid-level" mismatch silently matched nothing). These ARE the DB values.
+export const LIVE_CAREER_STAGES = [
+  'legendary',
+  'superstar',
+  'mainstream',
+  'mid-level',
+  'developing',
+  'undiscovered',
+] as const
+
+// Does this row's artist pass the selected career-stage filter? Shared by the results
+// screen and the PDF export so both stay identical. Empty selection = no filter. EVENT
+// cards (unmatched, chartmetric_id null → null career stage) ALWAYS pass — artist-tier
+// filtering doesn't apply to non-artist events, and silently dropping null-stage rows is
+// the same null-trap as the stateless-state bug. Do NOT re-inline a flat "stage IN selected".
+export function passesStageFilter(
+  careerStage: string | null | undefined,
+  selectedStages: ReadonlySet<string>,
+): boolean {
+  if (selectedStages.size === 0) return true
+  if (careerStage == null) return true // EVENT / unmatched → always shown
+  return selectedStages.has(careerStage.toLowerCase())
+}
+
 // Pull every geo-ok row in the date range (table is ~2k rows), refine in JS.
 async function loadAll(
   client: ReturnType<typeof createServiceClient>,

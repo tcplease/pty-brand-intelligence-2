@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { groupByCountryThenCity } from '@/lib/live-query'
+import { groupByCountryThenCity, passesStageFilter, LIVE_CAREER_STAGES } from '@/lib/live-query'
 
 // ── Constants (Match Report aesthetic: Stage Black + Electric Yellow) ──
 const BG = '#0f0f0f'
@@ -64,9 +64,9 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-function plusDaysISO(days: number): string {
+function plusMonthsISO(months: number): string {
   const d = new Date()
-  d.setDate(d.getDate() + days)
+  d.setMonth(d.getMonth() + months)
   return d.toISOString().slice(0, 10)
 }
 
@@ -393,6 +393,9 @@ export default function LiveClient({ initial }: { initial: InitialState }) {
   const [error, setError] = useState('')
 
   const [group, setGroup] = useState<GroupMode>(initial.group)
+  // Career-stage filter on the results view (multi-select). Values are the exact
+  // lowercase intel_artists career_stage tiers (LIVE_CAREER_STAGES).
+  const [stageSel, setStageSel] = useState<string[]>([])
   const [removedShows, setRemovedShows] = useState<Set<number>>(new Set())
   const [removedArtists, setRemovedArtists] = useState<Set<string>>(new Set())
   const [clientName, setClientName] = useState('')
@@ -545,10 +548,11 @@ export default function LiveClient({ initial }: { initial: InitialState }) {
     citySel.forEach((c) => params.append('cities', c))
     params.set('group', group)
     if (clientName.trim()) params.set('client', clientName.trim())
+    stageSel.forEach((s) => params.append('stages', s))
     removedShows.forEach((id) => params.append('rmShow', String(id)))
     removedArtists.forEach((k) => params.append('rmCard', k))
     window.open(`/api/live/report?${params.toString()}`, '_blank')
-  }, [start, end, countrySel, stateSel, citySel, group, clientName, removedShows, removedArtists])
+  }, [start, end, countrySel, stateSel, citySel, group, clientName, stageSel, removedShows, removedArtists])
 
   const removeShow = useCallback((mondayItemId: number) => {
     if (!window.confirm('Remove this show?')) return
@@ -565,6 +569,7 @@ export default function LiveClient({ initial }: { initial: InitialState }) {
     setCountrySel([])
     setStateSel([])
     setCitySel([])
+    setStageSel([])
     setResults(null)
     setRemovedShows(new Set())
     setRemovedArtists(new Set())
@@ -574,7 +579,7 @@ export default function LiveClient({ initial }: { initial: InitialState }) {
   // ── Hydration (Next 16 query-param arrays → state) ──
   useEffect(() => {
     if (!start) setStart(todayISO())
-    if (!end) setEnd(plusDaysISO(365))
+    if (!end) setEnd(plusMonthsISO(1)) // default window = today → +1 month
     // A full path arrived via query params → fast-forward to results.
     if (initial.start && initial.end && initial.countries.length > 0) {
       void loadResults(initial.countries, initial.states, initial.cities)
@@ -584,12 +589,18 @@ export default function LiveClient({ initial }: { initial: InitialState }) {
   }, [])
 
   // ── Derived: visible rows + grouping ──
+  // Stage filter is shared with the PDF export (passesStageFilter) so screen == PDF.
+  // EVENT cards (null career stage) always pass; an empty selection is no filter.
+  const stageSet = useMemo(() => new Set(stageSel.map((s) => s.toLowerCase())), [stageSel])
   const visible = useMemo(() => {
     if (!results) return []
     return results.filter(
-      (r) => !removedShows.has(r.monday_item_id) && !removedArtists.has(artistKey(r)),
+      (r) =>
+        !removedShows.has(r.monday_item_id) &&
+        !removedArtists.has(artistKey(r)) &&
+        passesStageFilter(r.artist?.career_stage, stageSet),
     )
-  }, [results, removedShows, removedArtists])
+  }, [results, removedShows, removedArtists, stageSet])
 
   const byArtist = useMemo(() => buildCardGroups(visible), [visible])
 
@@ -786,6 +797,41 @@ export default function LiveClient({ initial }: { initial: InitialState }) {
               >
                 Export PDF
               </button>
+            </div>
+
+            {/* Career-stage filter (multi-select). EVENT cards always remain visible. */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs uppercase tracking-wider mr-1" style={{ color: W50 }}>
+                Career stage
+              </span>
+              {LIVE_CAREER_STAGES.map((s) => {
+                const on = stageSel.includes(s)
+                const color = CAREER_COLORS[s] ?? Y
+                return (
+                  <button
+                    key={s}
+                    onClick={() => toggle(setStageSel)(s)}
+                    className="px-3 py-1.5 rounded-full text-xs capitalize transition-colors"
+                    style={{
+                      background: on ? `${color}22` : SURFACE2,
+                      color: on ? color : W80,
+                      border: `1px solid ${on ? color : BORDER}`,
+                      fontWeight: on ? 600 : 400,
+                    }}
+                  >
+                    {s}
+                  </button>
+                )
+              })}
+              {stageSel.length > 0 && (
+                <button
+                  onClick={() => setStageSel([])}
+                  className="text-xs uppercase tracking-wider px-2 py-1"
+                  style={{ color: W50 }}
+                >
+                  Clear
+                </button>
+              )}
             </div>
 
             {loading ? (

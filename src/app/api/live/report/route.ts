@@ -2,6 +2,7 @@ import { createServiceClient } from '@/lib/supabase'
 import {
   loadLiveResults,
   groupByCountryThenCity,
+  passesStageFilter,
   liveArtistKey as artistKey,
   type LiveShowRow,
 } from '@/lib/live-query'
@@ -129,14 +130,20 @@ export async function GET(request: Request) {
   // Curation deltas — repeated params so event names containing commas stay intact.
   const removedShows = new Set(sp.getAll('rmShow').map((v) => parseInt(v, 10)).filter((n) => !Number.isNaN(n)))
   const removedCards = new Set(sp.getAll('rmCard'))
+  // Career-stage filter (shared predicate; EVENT cards always pass) — screen == PDF.
+  const stageSet = new Set(sp.getAll('stages').map((s) => s.toLowerCase()))
 
   try {
     const client = createServiceClient()
     const results = await loadLiveResults(client, { start, end, countries, states, cities })
 
-    // Apply curation: subtract trashed shows and trashed cards (PDF == curated screen).
+    // Apply curation + stage filter: subtract trashed shows/cards and stage-excluded
+    // artist cards (EVENT cards with null career stage always pass). PDF == curated screen.
     const curated = results.filter(
-      (r) => !removedShows.has(r.monday_item_id) && !removedCards.has(artistKey(r)),
+      (r) =>
+        !removedShows.has(r.monday_item_id) &&
+        !removedCards.has(artistKey(r)) &&
+        passesStageFilter(r.artist?.career_stage, stageSet),
     )
 
     const showCount = curated.length
@@ -153,6 +160,7 @@ export async function GET(request: Request) {
     if (countries.length) scopeParts.push(countries.join(', '))
     if (states.length) scopeParts.push(`${states.length} state${states.length === 1 ? '' : 's'}`)
     if (cities.length) scopeParts.push(`${cities.length} cit${cities.length === 1 ? 'y' : 'ies'}`)
+    if (stageSet.size) scopeParts.push(Array.from(stageSet).join(', '))
 
     const generated = new Date().toLocaleDateString('en-US', {
       month: 'short',
