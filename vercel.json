@@ -35,6 +35,10 @@
     {
       "path": "/api/health/enrichment",
       "schedule": "0 14 * * 1"
+    },
+    {
+      "path": "/api/sync/future-shows",
+      "schedule": "0 8 * * *"
     }
   ]
 }

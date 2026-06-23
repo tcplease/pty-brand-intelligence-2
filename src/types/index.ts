@@ -137,6 +137,24 @@ export interface ActivityLogEntry {
   created_at: string
 }
 
+// Future Shows — mirror of board 5517797966 "Future Shows" group (read-only).
+export interface FutureShow {
+  monday_item_id: number
+  artist_name: string
+  chartmetric_id: number | null
+  match_status: 'exact' | 'normalized' | 'unmatched'
+  show_date: string | null
+  venue_name: string | null
+  city: string | null
+  state: string | null
+  country: string | null
+  geo_status: 'ok' | 'unknown'
+  full_address: string | null
+  monday_last_synced_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 // View types (joined data for the UI)
 export interface ActiveRosterItem extends Artist {
   stage: string | null

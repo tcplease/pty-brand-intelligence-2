@@ -10,7 +10,7 @@
 **Owner:** P&TY  
 **Stack:** Next.js / TypeScript / Tailwind CSS → deployed on Vercel  
 **Database:** Supabase (PostgreSQL)  
-**Auth:** Shared password via Vercel middleware (upgradeable)  
+**Auth:** Google OAuth restricted to @please.co (enforced in `proxy.ts`)  
 **AI:** Anthropic Claude API (pitch generation, conversational queries)  
 **Repo:** Check git remote for current repo location
 
@@ -479,3 +479,15 @@ At the start of each Claude Code session:
 ---
 
 *Last updated: March 26, 2026 — Tim (P&TY)*
+
+### /live (Future Shows) — dev server caveat
+Turbopack HMR does NOT reliably recompile /api/live route-handler changes — it serves a
+stale module across edits. This has produced phantom /live filter bugs twice (city/state
+filtering, mixed stateful/stateless country case) where the on-disk code was already correct.
+
+Rule: after ANY change to /api/live or the /live route, do a full `npm run dev` restart
+(not HMR) before trusting the screen. For final pre-ship verification, test against a
+production build (`npm run build && npm start`), which doesn't exhibit the staleness.
+
+Verify /live by driving the real gated screen, not by hand-replicating SQL against Supabase —
+hand-replication tests query shape but misses the UI→query handoff and the stale-bundle issue.

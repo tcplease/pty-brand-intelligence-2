@@ -1,0 +1,128 @@
+/* ===========================================================================
+   PTY FUTURE SHOWS — card/show-list body styles.
+   Layers on /report/styles.css (which defines the :root brand vars, sheet geometry,
+   masthead, runhead/runfoot, and the .st-* career chips). This file only adds the
+   live-specific group headers + artist/event cards + show rows.
+   ======================================================================== */
+
+/* ---- country band (editorial, top level when grouping by city) ---- */
+.lcountry-head {
+  font-family: var(--f-head);
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--yellow);
+  background: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 20px 0 10px;
+  padding: 8px 12px;
+  border-radius: 3px;
+  break-inside: avoid;
+}
+.lcountry-head:first-of-type { margin-top: 6px; }
+.lcountry-head .cont { font-weight: 600; font-size: 9px; letter-spacing: .14em; color: rgba(255, 255, 255, .6); }
+
+/* ---- city subheader (nested under a country band) ---- */
+.lgroup-head {
+  font-family: var(--f-head);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--g-700);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 14px 0 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--line);
+  break-inside: avoid;
+}
+.lgroup-head:first-of-type { margin-top: 4px; }
+/* city header directly after a country band sits tighter */
+.lcountry-head + .lgroup-head { margin-top: 2px; }
+.lgroup-head .cont { font-weight: 600; font-size: 9px; letter-spacing: .14em; color: var(--g-500); }
+
+/* ---- artist / event card ---- */
+.lcard {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  break-inside: avoid;
+}
+.lc-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 12px;
+  background: var(--warm-100);
+  border-bottom: 1px solid var(--line-soft);
+}
+.lthumb {
+  width: 40px; height: 40px; flex: none;
+  border-radius: 3px;
+  background: var(--warm-200) center/cover no-repeat;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--g-400);
+}
+.lthumb.ev { background: var(--ink); color: var(--yellow); }
+.lthumb.ph { background: var(--warm-300); }
+
+.lc-name {
+  flex: 1 1 auto;
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: -.005em;
+  color: var(--ink);
+  line-height: 1.1;
+  min-width: 0;
+}
+.lc-name .cont { font-family: var(--f-head); font-weight: 600; font-size: 9px; letter-spacing: .12em; color: var(--g-500); }
+
+.lc-badge { flex: none; }
+.lc-badge span {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-family: var(--f-head);
+  font-weight: 700;
+  font-size: 9px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+/* event badge — neutral, distinct from career chips */
+.lc-event { color: var(--g-700); background: var(--warm-300); }
+
+/* ---- show rows ---- */
+.lc-shows { padding: 2px 12px 4px; }
+.lshow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line-soft);
+  font-family: var(--f-body);
+  font-size: 11.5px;
+  color: var(--ink);
+  break-inside: avoid;
+}
+.lshow:last-child { border-bottom: 0; }
+.lshow .d {
+  font-family: var(--f-head);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: .02em;
+  color: var(--ink);
+  white-space: nowrap;
+  flex: none;
+  min-width: 92px;
+}
+.lshow .sep { color: var(--g-400); flex: none; }
+.lshow .loc { color: var(--g-700); white-space: nowrap; flex: none; }
+.lshow .ven { color: var(--g-600); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
