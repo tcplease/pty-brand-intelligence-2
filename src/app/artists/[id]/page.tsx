@@ -705,6 +705,9 @@ Festival Appearances: ${activity.filter(a => a.event_type === 'festival_added').
   <a href="/match" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>
     Match
   </a>
+  <a href="/live" className="text-sm transition-colors hover:text-white" style={{ color: W50 }}>
+    Live
+  </a>
   {copyMsg && <span className="ml-auto text-xs font-semibold" style={{ color: GREEN }}>{copyMsg}</span>}
   <div className={copyMsg ? '' : 'ml-auto'}><HelpOverlay page="artist" /></div>
 </nav>
