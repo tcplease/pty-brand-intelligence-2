@@ -585,11 +585,11 @@ async function searchAndLinkNewArtists(testNames?: string[]) {
   // Reuse-before-pay needs the current roster — resolveAndEnrichArtist matches
   // (normalized + trigram) against it BEFORE any Chartmetric call, so a name we
   // already own links at zero CM spend.
-  const roster = await fetchAllRows(serviceClient, 'intel_artists', 'chartmetric_id, name')
+  const roster = await fetchAllRows(serviceClient, 'intel_artists', 'chartmetric_id, name, spotify_followers, instagram_followers')
   const deps = {
     client: serviceClient,
     getToken: async () => cmToken,
-    existing: roster.map(r => ({ chartmetric_id: r.chartmetric_id, name: r.name })),
+    existing: roster.map(r => ({ chartmetric_id: r.chartmetric_id, name: r.name, followers: Math.max(r.spotify_followers ?? 0, r.instagram_followers ?? 0) || null })),
     source: 'monday',
     discoveryStatus: 'pipeline',
   }
@@ -608,6 +608,18 @@ async function searchAndLinkNewArtists(testNames?: string[]) {
       // Surface, never freeze — no cache stamp, so the name retries cleanly next run.
       errors.push(`${group.display}: ${r.error}`)
       console.error(`resolve failed for "${group.display}": ${r.error}`)
+      continue
+    }
+
+    if (r.outcome === 'needs-review') {
+      // Low-confidence resolution (confidence floor) — surface for manual linking,
+      // do NOT auto-create/link. Stamp 'ambiguous' (already handled as awaiting-manual,
+      // never auto-retried), so it doesn't burn the cap every run.
+      await serviceClient
+        .from('intel_monday_items')
+        .update({ cm_search_attempted_at: now, cm_search_result: 'ambiguous' })
+        .in('monday_item_id', group.itemIds)
+      console.log(`needs-review: ${group.display} (${(r.reasons ?? []).join(', ')}) ${r.note ?? ''}`)
       continue
     }
 
@@ -893,11 +905,11 @@ async function runResolveTest(names: string[]) {
   } catch {
     return NextResponse.json({ error: 'CM token failed' }, { status: 500 })
   }
-  const roster = await fetchAllRows(serviceClient, 'intel_artists', 'chartmetric_id, name')
+  const roster = await fetchAllRows(serviceClient, 'intel_artists', 'chartmetric_id, name, spotify_followers, instagram_followers')
   const deps = {
     client: serviceClient,
     getToken: async () => token,
-    existing: roster.map(r => ({ chartmetric_id: r.chartmetric_id, name: r.name })),
+    existing: roster.map(r => ({ chartmetric_id: r.chartmetric_id, name: r.name, followers: Math.max(r.spotify_followers ?? 0, r.instagram_followers ?? 0) || null })),
     source: 'monday',
     discoveryStatus: 'pipeline',
   }
@@ -910,6 +922,7 @@ async function runResolveTest(names: string[]) {
       outcome: r.outcome,
       chartmetric_id: r.chartmetric_id,
       row_created: r.rowCreated,
+      ...(r.reasons ? { reasons: r.reasons } : {}),
       ...(r.note ? { note: r.note } : {}),
       ...(r.error ? { error: r.error } : {}),
     })

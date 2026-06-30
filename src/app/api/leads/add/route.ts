@@ -13,11 +13,17 @@ function sleep(ms: number) {
 async function fetchAllArtists(client: ReturnType<typeof createServiceClient>) {
   const PAGE = 1000
   let from = 0
-  const out: { chartmetric_id: number; name: string }[] = []
+  const out: { chartmetric_id: number; name: string; followers: number | null }[] = []
   while (true) {
-    const { data, error } = await client.from('intel_artists').select('chartmetric_id, name').range(from, from + PAGE - 1)
+    const { data, error } = await client
+      .from('intel_artists')
+      .select('chartmetric_id, name, spotify_followers, instagram_followers')
+      .range(from, from + PAGE - 1)
     if (error) throw new Error(error.message)
-    out.push(...((data as { chartmetric_id: number; name: string }[]) ?? []))
+    type Row = { chartmetric_id: number; name: string; spotify_followers: number | null; instagram_followers: number | null }
+    for (const r of (data as Row[]) ?? []) {
+      out.push({ chartmetric_id: r.chartmetric_id, name: r.name, followers: Math.max(r.spotify_followers ?? 0, r.instagram_followers ?? 0) || null })
+    }
     if (!data || data.length < PAGE) break
     from += PAGE
   }
@@ -141,6 +147,8 @@ async function handleImport(body: { leads: ParsedLead[]; source: string; submitt
     discoveryStatus: 'new',
   }
 
+  // (needs-review is handled in the per-lead loop below — surfaced, never auto-created)
+
   const results: Array<{ name: string; status: string; chartmetric_id?: number; note?: string; error?: string }> = []
 
   for (const lead of leads) {
@@ -149,6 +157,11 @@ async function handleImport(body: { leads: ParsedLead[]; source: string; submitt
 
     if (r.outcome === 'error') {
       results.push({ name: lead.name, status: 'error', error: r.error })
+      continue
+    }
+    if (r.outcome === 'needs-review') {
+      // Low-confidence — surface for manual review, do not auto-create/link.
+      results.push({ name: lead.name, status: 'needs_review', note: (r.reasons ?? []).join(', ') })
       continue
     }
     if (r.outcome === 'no-match' || r.chartmetric_id == null) {
@@ -178,6 +191,7 @@ async function handleImport(body: { leads: ParsedLead[]; source: string; submitt
     total: results.length,
     created: results.filter(r => r.status === 'created').length,
     existing: results.filter(r => r.status === 'exists').length,
+    needsReview: results.filter(r => r.status === 'needs_review').length,
     notFound: results.filter(r => r.status === 'not_found').length,
     errors: results.filter(r => r.status === 'error').length,
     results,
