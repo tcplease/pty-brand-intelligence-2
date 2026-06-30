@@ -66,6 +66,7 @@ export function normalizeArtistName(name: string): string {
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '') // strip combining diacritical marks → base letters
     .toLowerCase()
+    .replace(/[-–—]+/g, ' ') // hyphens/dashes → space, so "Salt-N-Pepa" === "Salt N Pepa"
     .replace(/[^\w\s]/g, '') // strip remaining punctuation
     .replace(/\s+/g, ' ') // collapse whitespace
     .trim()

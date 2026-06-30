@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { createServiceClient } from '@/lib/supabase'
+import { resolveAndEnrichArtist } from '@/lib/resolve-artist'
 import {
   latestStatValue,
   getInstagramAudience,
@@ -48,6 +49,19 @@ const VISIBLE_STAGES = new Set([
   'Finalizing On-Sale (Terms Agreed)',
   'Won (Final On-Sale Planned)',
 ])
+
+// Search priority (higher = searched first within the per-run cap). Live/closer-to-won
+// deals jump the queue so newer Won/mid-funnel deals never starve behind the backlog.
+const STAGE_PRIORITY: Record<string, number> = {
+  'Won (Final On-Sale Planned)': 8,
+  'Finalizing On-Sale (Terms Agreed)': 7,
+  'Negotiation (Terms Being Discussed)': 6,
+  'Proposal (financials submitted)': 5,
+  'Active Leads (Contact Has Responded)': 4,
+  'Prospect - Direct Sales Agent Contact': 3,
+  'Outbound - Automated Contact': 2,
+  'Outbound - No Contact': 1,
+}
 
 // Per-run caps keep CM cost bounded on the hourly cron; the queue drains across runs.
 const MAX_SEARCHES_PER_RUN = 25
@@ -531,21 +545,33 @@ async function searchAndLinkNewArtists(testNames?: string[]) {
   }
 
   if (!candidates.length) {
-    return { searched: 0, linked: 0, unmatched: [], deferred: 0, awaiting_manual: awaitingManual, pendingLinks: [] as PendingLink[] }
+    return { searched: 0, linked: 0, deferred: 0, awaiting_manual: awaitingManual, results: [], errors: [] }
   }
 
-  // Group items by normalized name so one search covers all deals for an artist
-  const byName = new Map<string, { display: string; itemIds: number[] }>()
+  // Group items by normalized name so one search covers all deals for an artist.
+  // Track the highest-priority stage + whether ANY item is never-searched so the
+  // per-run cap front-loads live deals and never-searched names.
+  const byName = new Map<string, { display: string; itemIds: number[]; priority: number; neverSearched: boolean }>()
   for (const item of candidates) {
     const key = item.artist_name.toLowerCase().trim()
-    const group = byName.get(key) || { display: item.artist_name, itemIds: [] as number[] }
+    const group = byName.get(key) || { display: item.artist_name, itemIds: [] as number[], priority: 0, neverSearched: false }
     group.itemIds.push(item.monday_item_id)
+    group.priority = Math.max(group.priority, STAGE_PRIORITY[item.stage] ?? 0)
+    if (item.cm_search_attempted_at === null) group.neverSearched = true
     byName.set(key, group)
   }
 
-  const names = Array.from(byName.entries())
-  const toSearch = names.slice(0, MAX_SEARCHES_PER_RUN)
-  const deferred = names.length - toSearch.length
+  // ORDER BEFORE THE CAP SLICE (Part 3 fix): never-searched first, then stage
+  // priority. The old `names.slice(0, 25)` took an arbitrary fixed front every run,
+  // so newer Won deals (Good Charlotte, Blondshell) sat past position 25 and never
+  // got searched. Ordering makes the 25/run budget rotate through the whole backlog
+  // and front-load live deals.
+  const ordered = Array.from(byName.entries()).sort((a, b) => {
+    if (a[1].neverSearched !== b[1].neverSearched) return a[1].neverSearched ? -1 : 1
+    return b[1].priority - a[1].priority
+  })
+  const toSearch = ordered.slice(0, MAX_SEARCHES_PER_RUN)
+  const deferred = ordered.length - toSearch.length
   if (deferred > 0) console.log(`CM search: ${deferred} names deferred to next run (cap ${MAX_SEARCHES_PER_RUN})`)
 
   let cmToken: string
@@ -553,85 +579,69 @@ async function searchAndLinkNewArtists(testNames?: string[]) {
     cmToken = await getCMToken()
   } catch {
     console.error('CM token failed, skipping name search')
-    return { searched: 0, linked: 0, unmatched: [], deferred: names.length, awaiting_manual: awaitingManual, pendingLinks: [] as PendingLink[], error: 'CM token failed' }
+    return { searched: 0, linked: 0, deferred: ordered.length, awaiting_manual: awaitingManual, results: [], errors: ['CM token failed'] }
+  }
+
+  // Reuse-before-pay needs the current roster — resolveAndEnrichArtist matches
+  // (normalized + trigram) against it BEFORE any Chartmetric call, so a name we
+  // already own links at zero CM spend.
+  const roster = await fetchAllRows(serviceClient, 'intel_artists', 'chartmetric_id, name')
+  const deps = {
+    client: serviceClient,
+    getToken: async () => cmToken,
+    existing: roster.map(r => ({ chartmetric_id: r.chartmetric_id, name: r.name })),
+    source: 'monday',
+    discoveryStatus: 'pipeline',
   }
 
   let linked = 0
-  const unmatched: { name: string; reason: string; candidates?: { id: number; name: string }[] }[] = []
-  const pendingLinks: PendingLink[] = []
+  const results: { name: string; outcome: string; chartmetric_id: number | null; rowCreated: boolean; note?: string; error?: string }[] = []
+  const errors: string[] = []
   const now = new Date().toISOString()
 
-  for (const [key, group] of toSearch) {
-    let matchedCmId: number | null = null
-    let outcome: 'linked' | 'no_match' | 'ambiguous' | 'failed' = 'failed'
-    try {
-      await sleep(600)
-      const res = await fetch(`${CM_BASE}/search?q=${encodeURIComponent(group.display)}&type=artists&limit=3`, {
-        headers: { Authorization: `Bearer ${cmToken}` },
-      })
-      if (!res.ok) throw new Error(`CM search HTTP ${res.status}`)
-      const results: { id: number; name: string }[] = (await res.json()).obj?.artists || []
+  for (const [, group] of toSearch) {
+    await sleep(400)
+    const r = await resolveAndEnrichArtist(group.display, deps)
+    results.push({ name: group.display, outcome: r.outcome, chartmetric_id: r.chartmetric_id, rowCreated: r.rowCreated, note: r.note, error: r.error })
 
-      const exact = results.filter(r => (r.name || '').toLowerCase().trim() === key)
-      if (exact.length === 1) {
-        matchedCmId = exact[0].id
-        outcome = 'linked'
-      } else {
-        outcome = exact.length === 0 ? 'no_match' : 'ambiguous'
-        unmatched.push({
-          name: group.display,
-          reason: exact.length === 0 ? 'no exact match' : 'ambiguous (multiple exact matches)',
-          candidates: results.map(r => ({ id: r.id, name: r.name })),
-        })
+    if (r.outcome === 'error') {
+      // Surface, never freeze — no cache stamp, so the name retries cleanly next run.
+      errors.push(`${group.display}: ${r.error}`)
+      console.error(`resolve failed for "${group.display}": ${r.error}`)
+      continue
+    }
+
+    if (r.chartmetric_id) {
+      // Link all of this artist's deals. cm_search_result stays NULL on link.
+      const { error: updErr } = await serviceClient
+        .from('intel_monday_items')
+        .update({ chartmetric_id: r.chartmetric_id, cm_search_result: null })
+        .in('monday_item_id', group.itemIds)
+      if (updErr) { errors.push(`link ${group.display}: ${updErr.message}`); continue }
+      // Existing artist now also on a Monday deal → mark pipeline-visible (mirrors
+      // autoLinkByName). A freshly inserted row already carries source='monday'/
+      // discovery_status='pipeline', so only touch the matched-existing case.
+      if (!r.rowCreated) {
+        await serviceClient
+          .from('intel_artists')
+          .update({ discovery_status: 'pipeline', source: 'both' })
+          .eq('chartmetric_id', r.chartmetric_id)
       }
-    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any -- error shape unknown
-      console.error(`CM search failed for "${group.display}":`, err.message)
-      unmatched.push({ name: group.display, reason: 'search request failed' })
+      linked += group.itemIds.length
+      console.log(`CM resolve linked: ${group.display} → CM ${r.chartmetric_id} (${r.outcome}, ${group.itemIds.length} items)`)
+      continue
     }
 
-    // Transient request failures don't stamp the cache — the name retries next run
-    if (outcome === 'failed') continue
-
-    if (matchedCmId) {
-      // The chartmetric_id FK requires an intel_artists row. If the artist
-      // doesn't exist yet, defer the link — enrichNewArtists inserts the
-      // artist and sets the link afterwards. No cache stamp either: if
-      // enrichment fails, the name retries cleanly next run.
-      const { data: existing } = await serviceClient
-        .from('intel_artists')
-        .select('chartmetric_id')
-        .eq('chartmetric_id', matchedCmId)
-        .maybeSingle()
-
-      if (!existing) {
-        pendingLinks.push({ cmId: matchedCmId, name: group.display, itemIds: group.itemIds })
-        console.log(`CM search matched: ${group.display} → CM ${matchedCmId}, pending enrichment`)
-        continue
-      }
-    }
-
-    // Write the cache result; on match, set the link in the same write.
-    // cm_search_result stays NULL on link — linked items are identified by
-    // chartmetric_id, not the cache. Only intel_monday_items is touched here —
-    // never intel_artists.
-    const update: Record<string, unknown> = {
-      cm_search_attempted_at: now,
-      cm_search_result: outcome === 'linked' ? null : outcome,
-    }
-    if (matchedCmId) update.chartmetric_id = matchedCmId
-    const { error: updateError } = await serviceClient
+    // True no-match (Chartmetric returned ZERO candidates) — the ONLY case that
+    // stamps the negative cache. Ambiguous never reaches here (it tiebreaks above).
+    const { error: ncErr } = await serviceClient
       .from('intel_monday_items')
-      .update(update)
+      .update({ cm_search_attempted_at: now, cm_search_result: 'no_match' })
       .in('monday_item_id', group.itemIds)
-    if (updateError) {
-      console.error(`Failed to update items for "${group.display}":`, updateError.message)
-    } else if (matchedCmId) {
-      linked++
-      console.log(`CM search linked: ${group.display} → CM ${matchedCmId} (${group.itemIds.length} items)`)
-    }
+    if (ncErr) errors.push(`cache ${group.display}: ${ncErr.message}`)
   }
 
-  return { searched: toSearch.length, linked, unmatched, deferred, awaiting_manual: awaitingManual, pendingLinks }
+  return { searched: toSearch.length, linked, deferred, awaiting_manual: awaitingManual, results, errors }
 }
 
 async function enrichNewArtists(testNames?: string[], pendingLinks: PendingLink[] = []) {
@@ -858,17 +868,58 @@ export async function GET(request: Request) {
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  return runMondaySync(parseTestNames(request))
+  const testNames = parseTestNames(request)
+  if (testNames) return runResolveTest(testNames)
+  return runMondaySync()
 }
 
 // POST handler for manual triggers
 export async function POST(request: Request) {
-  return runMondaySync(parseTestNames(request))
+  const testNames = parseTestNames(request)
+  // Test-before-batch protocol: ?names=… runs the resolver directly on the given
+  // names (no deals/contacts sync) and returns the per-name resolution table.
+  if (testNames) return runResolveTest(testNames)
+  return runMondaySync()
 }
 
-async function runMondaySync(testNames?: string[]) {
+// Resolver test harness — exercises resolveAndEnrichArtist on explicit names so the
+// reuse-before-pay / tiebreak / enrich behavior can be verified before any backlog
+// run. Does NOT depend on a matching unlinked Monday row.
+async function runResolveTest(names: string[]) {
+  const serviceClient = createServiceClient()
+  let token: string
   try {
-    console.log('Starting Monday sync...', testNames ? `(test mode: ${testNames.join(', ')})` : '')
+    token = await getCMToken()
+  } catch {
+    return NextResponse.json({ error: 'CM token failed' }, { status: 500 })
+  }
+  const roster = await fetchAllRows(serviceClient, 'intel_artists', 'chartmetric_id, name')
+  const deps = {
+    client: serviceClient,
+    getToken: async () => token,
+    existing: roster.map(r => ({ chartmetric_id: r.chartmetric_id, name: r.name })),
+    source: 'monday',
+    discoveryStatus: 'pipeline',
+  }
+  const results = []
+  for (const name of names) {
+    await sleep(400)
+    const r = await resolveAndEnrichArtist(name, deps)
+    results.push({
+      name,
+      outcome: r.outcome,
+      chartmetric_id: r.chartmetric_id,
+      row_created: r.rowCreated,
+      ...(r.note ? { note: r.note } : {}),
+      ...(r.error ? { error: r.error } : {}),
+    })
+  }
+  return NextResponse.json({ test: true, count: results.length, results })
+}
+
+async function runMondaySync() {
+  try {
+    console.log('Starting Monday sync...')
 
     const deals = await syncDeals()
     console.log('Deals sync complete:', { total: deals.total, upserted: deals.upserted })
@@ -877,17 +928,16 @@ async function runMondaySync(testNames?: string[]) {
     const autoLinked = await autoLinkByName()
     console.log('Auto-link complete:', autoLinked)
 
-    // Search CM by name for brand-new Monday artists and link exact matches
-    const search = await searchAndLinkNewArtists(testNames)
+    // Resolve + enrich brand-new Monday artists (reuse-before-pay, then CM) and link.
+    const search = await searchAndLinkNewArtists()
     console.log('CM name search complete:', JSON.stringify(search))
 
     // Contacts run after linking so newly linked artists get contacts in the same run
     const contacts = await syncContacts(deals.items)
     console.log('Contacts sync complete:', contacts)
 
-    // Enrich any new artists that don't have CM data yet; name-search matches
-    // awaiting an artist row get inserted and linked here (FK requires artist-first)
-    const enrichment = await enrichNewArtists(testNames, search.pendingLinks)
+    // Backfill any items linked-but-not-yet-enriched (e.g. autoLinkByName matches).
+    const enrichment = await enrichNewArtists()
     console.log('Enrichment complete:', enrichment)
 
     return NextResponse.json({

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabase, createServiceClient } from '@/lib/supabase'
 import { getSpotifyToken, getLatestAlbum } from '@/lib/spotify'
 import { latestStatValue, extractDemographics, getInstagramAudience, extractSocialUrls, type SocialUrls } from '@/lib/chartmetric'
+import { insertEnrichedArtist } from '@/lib/chartmetric-enrich'
 
 export const maxDuration = 300
 
@@ -245,94 +246,26 @@ export async function GET(request: Request) {
       return NextResponse.json(existingById[0])
     }
 
-    // Step 3: Full CM enrichment — profile, career, socials, brands, sectors, Spotify ID
-    const meta = await getArtistMeta(cmId, token)
-    const career = await getCareerData(cmId, token)
-    const socialStats = await getSocialStats(cmId, token)
-
-    // Get Spotify ID + social profile URLs from /urls (one call)
-    const urls = await getArtistUrls(cmId, token)
-
-    // Fetch last album release from Spotify (for album cycle tracking)
-    let lastAlbumReleaseDate: string | null = null
-    let lastAlbumName: string | null = null
-    if (urls.spotify_artist_id) {
-      try {
-        const spToken = await getSpotifyToken()
-        const latest = await getLatestAlbum(spToken, urls.spotify_artist_id)
-        if (latest) {
-          lastAlbumReleaseDate = latest.release_date
-          lastAlbumName = latest.name
-        }
-      } catch { /* skip — non-critical */ }
-    }
-
-    const artistRecord = {
-      chartmetric_id: cmId,
-      name: meta?.name || match.name,
-      image_url: meta?.image_url || null,
-      cm_score: meta?.cm_score || null,
-      career_stage: career?.stage || null,
-      primary_genre: meta?.primary_genre || null,
-      spotify_artist_id: urls.spotify_artist_id,
-      instagram_url: urls.instagram_url,
-      youtube_url: urls.youtube_url,
-      tiktok_url: urls.tiktok_url,
-      last_album_release_date: lastAlbumReleaseDate,
-      last_album_name: lastAlbumName,
+    // Step 3-5: Full enrichment + INSERT via the shared unit (demographics, brand +
+    // sector affinities, image_url, social URLs). Service-role write so the row
+    // actually persists; the error is SURFACED (the old swallow returned a success
+    // object while nothing was stored).
+    const enrich = await insertEnrichedArtist(createServiceClient(), cmId, token, {
       source: 'manual',
       discovery_status: 'unlisted',
-      is_active: true,
-      cm_last_refreshed_at: new Date().toISOString(),
-      ...socialStats,
+      fallbackName: match.name,
+    })
+    if (enrich.error) {
+      return NextResponse.json({ error: `Failed to store artist: ${enrich.error}`, chartmetric_id: cmId }, { status: 502 })
     }
 
-    // Step 4: Store in DB — INSERT only, never overwrite
-    const { error: insertErr } = await supabase.from('intel_artists').insert(artistRecord)
-    if (insertErr) console.error('Failed to store artist:', insertErr.message)
-
-    // Step 5: Pull brand + sector affinities
-    try {
-      const brandRes = await fetch(`https://api.chartmetric.com/api/artist/${cmId}/instagram-audience-data?field=brandAffinity`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (brandRes.ok) {
-        const brands = ((await brandRes.json())?.obj || []).filter((b: any) => b.affinity >= 1.0) // eslint-disable-line @typescript-eslint/no-explicit-any
-        if (brands.length) {
-          await supabase.from('intel_brand_affinities').insert(
-            brands.map((b: any) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
-              chartmetric_id: cmId,
-              brand_id: b.id || 0,
-              brand_name: b.name,
-              affinity_scale: b.affinity,
-              follower_count: b.followers || null,
-              interest_category: b.category || null,
-            }))
-          )
-        }
-      }
-    } catch { /* skip */ }
-
-    try {
-      const sectorRes = await fetch(`https://api.chartmetric.com/api/artist/${cmId}/instagram-audience-data?field=interests`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (sectorRes.ok) {
-        const sectors = ((await sectorRes.json())?.obj || []).filter((s: any) => s.affinity >= 1.0) // eslint-disable-line @typescript-eslint/no-explicit-any
-        if (sectors.length) {
-          await supabase.from('intel_sector_affinities').insert(
-            sectors.map((s: any) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
-              chartmetric_id: cmId,
-              sector_id: s.id || 0,
-              sector_name: s.name,
-              affinity_scale: s.affinity,
-            }))
-          )
-        }
-      }
-    } catch { /* skip */ }
-
-    return NextResponse.json(artistRecord)
+    // Return the persisted row.
+    const { data: stored } = await supabase
+      .from('intel_artists')
+      .select('*')
+      .eq('chartmetric_id', cmId)
+      .limit(1)
+    return NextResponse.json(stored?.[0] ?? { chartmetric_id: cmId, stored: true })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     return NextResponse.json({ error: message }, { status: 500 })

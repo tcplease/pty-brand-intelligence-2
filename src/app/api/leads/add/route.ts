@@ -1,24 +1,27 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabase, createServiceClient } from '@/lib/supabase'
+import { resolveAndEnrichArtist } from '@/lib/resolve-artist'
+import { getCMToken } from '@/lib/chartmetric-enrich'
 
 export const maxDuration = 300
-
-const CM_REFRESH_TOKEN = process.env.CHARTMETRIC_TOKEN!
-const CM_BASE = 'https://api.chartmetric.com/api'
 
 function sleep(ms: number) {
   return new Promise(r => setTimeout(r, ms))
 }
 
-async function getCMToken(): Promise<string> {
-  const res = await fetch(`${CM_BASE}/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshtoken: CM_REFRESH_TOKEN }),
-  })
-  const data = await res.json()
-  if (!data.token) throw new Error('Failed to get CM token')
-  return data.token
+// Paginated roster fetch for reuse-before-pay (intel_artists exceeds the 1000-row cap).
+async function fetchAllArtists(client: ReturnType<typeof createServiceClient>) {
+  const PAGE = 1000
+  let from = 0
+  const out: { chartmetric_id: number; name: string }[] = []
+  while (true) {
+    const { data, error } = await client.from('intel_artists').select('chartmetric_id, name').range(from, from + PAGE - 1)
+    if (error) throw new Error(error.message)
+    out.push(...((data as { chartmetric_id: number; name: string }[]) ?? []))
+    if (!data || data.length < PAGE) break
+    from += PAGE
+  }
+  return out
 }
 
 interface ParsedLead {
@@ -113,198 +116,61 @@ async function handleParse(body: { text: string }) {
   return NextResponse.json({ parsed, total: parsed.length, existing: parsed.filter(p => p.existsInDb).length })
 }
 
-// Step 2: Confirm and import
+// Step 2: Confirm and import — routes every lead through the shared resolver
+// (reuse-before-pay → CM tiebreak → INSERT + full enrichment). Radar leads persist
+// to intel_artists even if never promoted to the pipeline (discovery_status='new'),
+// so they're reused later with zero re-pull. Writes go through service_role and
+// errors are surfaced (never report a created lead that didn't persist).
 async function handleImport(body: { leads: ParsedLead[]; source: string; submittedBy: string }) {
   const { leads, source, submittedBy } = body
-  const token = await getCMToken()
+  const serviceClient = createServiceClient()
 
-  const results: Array<{ name: string; status: string; chartmetric_id?: number }> = []
+  let token: string
+  try {
+    token = await getCMToken()
+  } catch {
+    return NextResponse.json({ error: 'CM token failed' }, { status: 500 })
+  }
+
+  const roster = await fetchAllArtists(serviceClient)
+  const deps = {
+    client: serviceClient,
+    getToken: async () => token,
+    existing: roster,
+    source: 'manual', // keeps Radar leads in the discovery feed (source.in.(festival_signal,manual))
+    discoveryStatus: 'new',
+  }
+
+  const results: Array<{ name: string; status: string; chartmetric_id?: number; note?: string; error?: string }> = []
 
   for (const lead of leads) {
-    // Check if already in DB
-    const { data: existing } = await supabase
-      .from('intel_artists')
-      .select('chartmetric_id')
-      .ilike('name', lead.name)
-      .limit(1)
+    await sleep(400)
+    const r = await resolveAndEnrichArtist(lead.name, deps)
 
-    if (existing && existing.length > 0) {
-      // Already exists — just log the activity
-      const cmId = existing[0].chartmetric_id
-      await supabase.from('activity_log').insert({
-        chartmetric_id: cmId,
-        event_type: 'added_to_pipeline',
-        event_title: `Tour lead submitted by ${submittedBy} via ${source}`,
-        event_detail: { tour_info: lead.tourInfo, source },
-        event_date: new Date().toISOString().split('T')[0],
-      })
-      results.push({ name: lead.name, status: 'exists', chartmetric_id: cmId })
+    if (r.outcome === 'error') {
+      results.push({ name: lead.name, status: 'error', error: r.error })
+      continue
+    }
+    if (r.outcome === 'no-match' || r.chartmetric_id == null) {
+      results.push({ name: lead.name, status: 'not_found' })
       continue
     }
 
-    // Search Chartmetric
-    await sleep(500)
-    let cmId: number | null = null
-    let profile: Record<string, unknown> = {}
-
-    try {
-      const searchRes = await fetch(`${CM_BASE}/search?q=${encodeURIComponent(lead.name)}&type=artists&limit=3`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const searchData = await searchRes.json()
-      const matches = searchData?.obj?.artists || []
-      const match = matches.find((a: any) => a.name?.toLowerCase() === lead.name.toLowerCase()) ||
-                    matches.find((a: any) => a.name?.toLowerCase().includes(lead.name.toLowerCase()) || lead.name.toLowerCase().includes(a.name?.toLowerCase()))
-
-      if (!match) {
-        results.push({ name: lead.name, status: 'not_found' })
-        continue
-      }
-
-      cmId = match.id as number
-    } catch {
-      results.push({ name: lead.name, status: 'error' })
-      continue
-    }
-
-    // Full CM enrichment — profile
-    await sleep(500)
-    try {
-      const profRes = await fetch(`${CM_BASE}/artist/${cmId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (profRes.ok) profile = (await profRes.json())?.obj || {}
-    } catch { /* use empty */ }
-
-    // Career stage
-    await sleep(500)
-    let careerStage: string | null = null
-    try {
-      const careerRes = await fetch(`${CM_BASE}/artist/${cmId}/career?limit=1`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (careerRes.ok) careerStage = ((await careerRes.json())?.obj?.[0])?.stage || null
-    } catch { /* skip */ }
-
-    // Spotify ID
-    await sleep(500)
-    let spotifyId: string | null = null
-    try {
-      const urlsRes = await fetch(`${CM_BASE}/artist/${cmId}/urls`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (urlsRes.ok) {
-        const urls = (await urlsRes.json())?.obj || []
-        const spEntry = urls.find((u: any) => u.domain === 'spotify')
-        if (spEntry?.url?.[0]) {
-          const spMatch = spEntry.url[0].match(/artist\/([a-zA-Z0-9]+)/)
-          if (spMatch) spotifyId = spMatch[1]
-        }
-      }
-    } catch { /* skip */ }
-
-    // Social stats from /stat/ endpoints (profile does NOT return these)
-    const socialStats: Record<string, number | null> = {
-      spotify_followers: null,
-      spotify_monthly_listeners: null,
-      instagram_followers: null,
-      youtube_subscribers: null,
-      tiktok_followers: null,
-    }
-    const statEndpoints = [
-      { path: `stat/spotify`, extract: (d: any) => { socialStats.spotify_followers = d?.obj?.followers?.[0]?.value ?? null; socialStats.spotify_monthly_listeners = d?.obj?.monthly_listeners?.[0]?.value ?? null } },
-      { path: `stat/instagram`, extract: (d: any) => { socialStats.instagram_followers = d?.obj?.followers?.[0]?.value ?? null } },
-      { path: `stat/youtube_channel`, extract: (d: any) => { socialStats.youtube_subscribers = d?.obj?.subscribers?.[0]?.value ?? null } },
-      { path: `stat/tiktok`, extract: (d: any) => { socialStats.tiktok_followers = d?.obj?.followers?.[0]?.value ?? null } },
-    ]
-    for (const ep of statEndpoints) {
-      try {
-        await sleep(400)
-        const statRes = await fetch(`${CM_BASE}/artist/${cmId}/${ep.path}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (statRes.ok) ep.extract(await statRes.json())
-      } catch { /* skip */ }
-    }
-
-    // Insert artist
-    const p = profile as any
-    const { error } = await supabase.from('intel_artists').insert({
-      chartmetric_id: cmId,
-      name: p.name || lead.name,
-      image_url: p.image_url || null,
-      cm_score: p.cm_artist_score || null,
-      career_stage: careerStage,
-      primary_genre: p.artist_genres?.[0]?.name || null,
-      ...socialStats,
-      audience_male_pct: p.sp_fans_male_pct || null,
-      audience_female_pct: p.sp_fans_female_pct || null,
-      spotify_artist_id: spotifyId,
-      source: 'manual',
-      discovery_status: 'new',
-      is_active: true,
-      cm_last_refreshed_at: new Date().toISOString(),
-    })
-
-    if (error) {
-      results.push({ name: lead.name, status: 'error' })
-      continue
-    }
-
-    // Brand affinities
-    await sleep(500)
-    try {
-      const brandRes = await fetch(`${CM_BASE}/artist/${cmId}/instagram-audience-data?field=brandAffinity`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (brandRes.ok) {
-        const brands = ((await brandRes.json())?.obj || []).filter((b: any) => b.affinity >= 1.0)
-        if (brands.length) {
-          await supabase.from('intel_brand_affinities').insert(
-            brands.map((b: any) => ({
-              chartmetric_id: cmId,
-              brand_id: b.id || 0,
-              brand_name: b.name,
-              affinity_scale: b.affinity,
-              follower_count: b.followers || null,
-              interest_category: b.category || null,
-            }))
-          )
-        }
-      }
-    } catch { /* skip */ }
-
-    // Sector affinities
-    await sleep(500)
-    try {
-      const sectorRes = await fetch(`${CM_BASE}/artist/${cmId}/instagram-audience-data?field=interests`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (sectorRes.ok) {
-        const sectors = ((await sectorRes.json())?.obj || []).filter((s: any) => s.affinity >= 1.0)
-        if (sectors.length) {
-          await supabase.from('intel_sector_affinities').insert(
-            sectors.map((s: any) => ({
-              chartmetric_id: cmId,
-              sector_id: s.id || 0,
-              sector_name: s.name,
-              affinity_scale: s.affinity,
-            }))
-          )
-        }
-      }
-    } catch { /* skip */ }
-
-    // Activity log
-    await supabase.from('activity_log').insert({
-      chartmetric_id: cmId,
+    // Log the lead submission against the resolved artist (existing or newly pulled).
+    await serviceClient.from('activity_log').insert({
+      chartmetric_id: r.chartmetric_id,
       event_type: 'added_to_pipeline',
       event_title: `Tour lead submitted by ${submittedBy} via ${source}`,
       event_detail: { tour_info: lead.tourInfo, source },
       event_date: new Date().toISOString().split('T')[0],
     })
 
-    results.push({ name: lead.name, status: 'created', chartmetric_id: cmId })
+    results.push({
+      name: lead.name,
+      status: r.rowCreated ? 'created' : 'exists',
+      chartmetric_id: r.chartmetric_id,
+      ...(r.note ? { note: r.note } : {}),
+    })
   }
 
   return NextResponse.json({
