@@ -11,6 +11,8 @@ import {
   extractSocialUrls,
 } from '@/lib/chartmetric'
 
+export const maxDuration = 300
+
 const BOARD_ID = '2696356409'
 const CRM_BOARD_ID = '2696356486'
 
@@ -885,13 +887,116 @@ export async function GET(request: Request) {
   return runMondaySync()
 }
 
+// Live-tail stages targeted by the one-time scoped backfill — NOT the dead/closed
+// stages (Fell Off / Lost / Tour Canceled), which resurface via normal ingestion.
+const LIVE_TAIL_STAGES = new Set([
+  'Outbound - No Contact',
+  'Outbound - Automated Contact',
+  'Prospect - Direct Sales Agent Contact',
+])
+
 // POST handler for manual triggers
 export async function POST(request: Request) {
+  const url = new URL(request.url)
+  // Scoped one-time backfill of the Outbound/Prospect unlinked tail — resolve +
+  // link confident matches, queue uncertain ones to /admin/review. Touches ONLY
+  // those stages; nothing else in the sync runs.
+  if (url.searchParams.get('backfill') === 'livetail') return runLiveTailBackfill()
   const testNames = parseTestNames(request)
   // Test-before-batch protocol: ?names=… runs the resolver directly on the given
   // names (no deals/contacts sync) and returns the per-name resolution table.
   if (testNames) return runResolveTest(testNames)
   return runMondaySync()
+}
+
+// Scoped backfill: every unlinked Outbound/Prospect deal, through the SAME resolver
+// (reuse-before-pay, confidence floor on). Confident → link + enrich; needs-review →
+// stamp 'ambiguous' (→ /admin/review); zero-candidate → 'no_match'. INSERT-only.
+async function runLiveTailBackfill() {
+  const serviceClient = createServiceClient()
+  const unlinked = await fetchAllRows(
+    serviceClient,
+    'intel_monday_items',
+    'monday_item_id, artist_name, stage',
+    q => q.is('chartmetric_id', null),
+  )
+  const scoped = unlinked.filter(i => LIVE_TAIL_STAGES.has(i.stage))
+  const byName = new Map<string, { display: string; itemIds: number[] }>()
+  for (const i of scoped) {
+    const key = (i.artist_name || '').toLowerCase().trim()
+    if (!key) continue
+    const g = byName.get(key) || { display: i.artist_name, itemIds: [] as number[] }
+    g.itemIds.push(i.monday_item_id)
+    byName.set(key, g)
+  }
+
+  let token: string
+  try {
+    token = await getCMToken()
+  } catch {
+    return NextResponse.json({ error: 'CM token failed' }, { status: 500 })
+  }
+  const roster = await fetchAllRows(serviceClient, 'intel_artists', 'chartmetric_id, name, spotify_followers, instagram_followers')
+  const deps = {
+    client: serviceClient,
+    getToken: async () => token,
+    existing: roster.map(r => ({ chartmetric_id: r.chartmetric_id, name: r.name, followers: Math.max(r.spotify_followers ?? 0, r.instagram_followers ?? 0) || null })),
+    source: 'monday',
+    discoveryStatus: 'pipeline',
+  }
+
+  const now = new Date().toISOString()
+  const results: Record<string, unknown>[] = []
+  let linked = 0, created = 0, review = 0, noMatch = 0, errors = 0
+
+  for (const [, group] of byName) {
+    await sleep(400)
+    const r = await resolveAndEnrichArtist(group.display, deps)
+    const base = {
+      name: group.display,
+      outcome: r.outcome,
+      chartmetric_id: r.chartmetric_id,
+      row_created: r.rowCreated,
+      review_flagged: r.outcome === 'needs-review',
+      ...(r.reasons ? { reasons: r.reasons } : {}),
+      ...(r.note ? { note: r.note } : {}),
+      ...(r.error ? { error: r.error } : {}),
+    }
+
+    if (r.outcome === 'error') {
+      errors++
+      results.push(base)
+      continue
+    }
+    if (r.outcome === 'needs-review') {
+      review++
+      await serviceClient.from('intel_monday_items').update({ cm_search_attempted_at: now, cm_search_result: 'ambiguous' }).in('monday_item_id', group.itemIds)
+      results.push(base)
+      continue
+    }
+    if (r.chartmetric_id) {
+      await serviceClient.from('intel_monday_items').update({ chartmetric_id: r.chartmetric_id, cm_search_result: null }).in('monday_item_id', group.itemIds)
+      if (!r.rowCreated) {
+        await serviceClient.from('intel_artists').update({ discovery_status: 'pipeline', source: 'both' }).eq('chartmetric_id', r.chartmetric_id)
+      } else {
+        created++
+      }
+      linked += group.itemIds.length
+      results.push(base)
+      continue
+    }
+    // zero-candidate → negative cache stamp
+    noMatch++
+    await serviceClient.from('intel_monday_items').update({ cm_search_attempted_at: now, cm_search_result: 'no_match' }).in('monday_item_id', group.itemIds)
+    results.push(base)
+  }
+
+  return NextResponse.json({
+    backfill: 'livetail',
+    distinct_names: byName.size,
+    summary: { linked_deals: linked, rows_created: created, review_flagged: review, no_match: noMatch, errors },
+    results,
+  })
 }
 
 // Resolver test harness — exercises resolveAndEnrichArtist on explicit names so the
