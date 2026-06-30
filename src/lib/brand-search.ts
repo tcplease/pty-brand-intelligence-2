@@ -53,6 +53,10 @@ export interface BrandSearchResult extends ArtistRow {
   combined_score: number
   deal_stage: string | null
   first_show: string | null
+  // Sector multi-select match info (0 when no sectors selected / not matched)
+  sector_match_count: number
+  sector_avg_affinity: number
+  sector_max_affinity: number
 }
 
 export interface BrandSearchParams {
@@ -61,6 +65,8 @@ export interface BrandSearchParams {
   gender?: string // 'male' | 'female' | 'any'
   threshold?: number
   ages?: string[]
+  sectorNames?: string[]
+  sectorLogic?: 'any' | 'all' // ANY = ≥1 selected sector; ALL = every selected sector
 }
 
 // ── Core scoring (deterministic: pure math on stored fields) ─────────
@@ -136,6 +142,40 @@ export async function runBrandSearch(params: BrandSearchParams): Promise<BrandSe
     }
   }
 
+  // 2b. Sector multi-select (ANY / ALL) — match on sector_NAME (the real identity;
+  // sector_id is a per-artist rank index, not a sector key). Presence of a row in
+  // intel_sector_affinities IS the ranking (every stored row is >= 1.0x). Hard filter
+  // that ANDs with all other filters; does NOT use the brand `affinity` path above.
+  // Per-artist {count of DISTINCT matched sector_names, avg, max} drives ordering.
+  const sectorNames = (params.sectorNames ?? []).filter((n) => typeof n === 'string' && n.trim())
+  const sectorLogic = params.sectorLogic === 'all' ? 'all' : 'any'
+  let sectorMatch: Map<number, { count: number; avg: number; max: number }> | null = null
+  if (sectorNames.length > 0) {
+    const { data: secRows, error: secErr } = await supabase
+      .from('intel_sector_affinities')
+      .select('chartmetric_id, sector_name, affinity_scale')
+      .in('sector_name', sectorNames)
+    if (secErr) throw secErr
+    const acc = new Map<number, { names: Set<string>; sum: number; max: number }>()
+    for (const row of secRows || []) {
+      const e = acc.get(row.chartmetric_id) || { names: new Set<string>(), sum: 0, max: 0 }
+      if (!e.names.has(row.sector_name)) {
+        e.names.add(row.sector_name)
+        e.sum += row.affinity_scale
+        if (row.affinity_scale > e.max) e.max = row.affinity_scale
+      }
+      acc.set(row.chartmetric_id, e)
+    }
+    sectorMatch = new Map()
+    const need = sectorNames.length
+    for (const [id, e] of acc) {
+      const count = e.names.size
+      // ANY → at least one; ALL → every selected sector_name (COUNT DISTINCT = N)
+      const qualifies = sectorLogic === 'all' ? count === need : count >= 1
+      if (qualifies) sectorMatch.set(id, { count, avg: e.sum / count, max: e.max })
+    }
+  }
+
   // 3. Score
   const hasBrandFilter = !!(brand || sector)
   const results: BrandSearchResult[] = (artists || []).map((artist: ArtistRow) => {
@@ -163,6 +203,7 @@ export async function runBrandSearch(params: BrandSearchParams): Promise<BrandSe
       ? (demographicPct * 0.6) + (normalizedAffinity * 0.4)
       : demographicPct
 
+    const sm = sectorMatch?.get(artist.chartmetric_id)
     return {
       ...artist,
       demographic_pct: Math.round(demographicPct * 10) / 10,
@@ -170,6 +211,9 @@ export async function runBrandSearch(params: BrandSearchParams): Promise<BrandSe
       combined_score: Math.round(combinedScore * 10) / 10,
       deal_stage: dealStageMap.get(artist.chartmetric_id) ?? null,
       first_show: firstShowMap.get(artist.chartmetric_id) ?? null,
+      sector_match_count: sm?.count ?? 0,
+      sector_avg_affinity: sm ? Math.round(sm.avg * 10) / 10 : 0,
+      sector_max_affinity: sm ? Math.round(sm.max * 10) / 10 : 0,
     }
   })
   .filter((a) => {
@@ -179,9 +223,24 @@ export async function runBrandSearch(params: BrandSearchParams): Promise<BrandSe
     }
     if (hasBrandFilter && a.affinity_score === 0) return false
     if (ages.length > 0 && a.age_18_24_pct === null) return false
+    // Sector multi-select filter — AND with everything else.
+    if (sectorMatch && !sectorMatch.has(a.chartmetric_id)) return false
     return true
   })
-  .sort((a, b) => b.combined_score - a.combined_score)
+  .sort((a, b) => {
+    // When sectors are selected, order by the sector fit first (ALL → strongest
+    // all-round avg; ANY → most matched sectors, then strongest single). Falls back
+    // to the existing brand/demographic combined_score as the tiebreaker.
+    if (sectorMatch) {
+      if (sectorLogic === 'all') {
+        if (b.sector_avg_affinity !== a.sector_avg_affinity) return b.sector_avg_affinity - a.sector_avg_affinity
+      } else {
+        if (b.sector_match_count !== a.sector_match_count) return b.sector_match_count - a.sector_match_count
+        if (b.sector_max_affinity !== a.sector_max_affinity) return b.sector_max_affinity - a.sector_max_affinity
+      }
+    }
+    return b.combined_score - a.combined_score
+  })
   .slice(0, 100)
 
   return results

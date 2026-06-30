@@ -56,6 +56,8 @@ export async function GET(request: Request) {
   const gender = sp.get('gender') || 'any'
   const threshold = parseFloat(sp.get('threshold') || '0')
   const ages = sp.get('ages')?.split(',').filter(Boolean) || []
+  const sectorNames = sp.getAll('sectorNames') // sector names carry commas → repeated params
+  const sectorLogic = sp.get('sectorLogic') === 'all' ? 'all' : 'any'
 
   // Client-side filters mirrored from the Match grid so the report == shown set
   const careerStages = new Set(sp.get('careerStages')?.split(',').filter(Boolean) || [])
@@ -63,7 +65,7 @@ export async function GET(request: Request) {
   const wonUpcoming = sp.get('wonUpcoming') === '1'
 
   try {
-    const results = await runBrandSearch({ brand, sector, gender, threshold, ages })
+    const results = await runBrandSearch({ brand, sector, gender, threshold, ages, sectorNames, sectorLogic })
 
     const fourteenDaysOut = new Date()
     fourteenDaysOut.setDate(fourteenDaysOut.getDate() + 14)

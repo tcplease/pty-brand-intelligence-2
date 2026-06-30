@@ -50,19 +50,6 @@ const STAGE_SHORT_LABELS: Record<string, string> = {
 
 const AGE_RANGES = ['13-17', '18-24', '25-34', '35-44', '45-64', '65+']
 
-const TOP_SECTORS = [
-  'Activewear', 'Art & Design', 'Beauty & Cosmetics',
-  'Beer, Wine & Spirits', 'Business & Careers', 'Camera & Photography',
-  'Cars & Motorbikes', 'Clothes, Shoes, Handbags & Accessories',
-  'Coffee, Tea & Beverages', 'Electronics & Computers', 'Fitness & Yoga',
-  'Friends, Family & Relationships', 'Gaming', 'Healthcare & Medicine',
-  'Healthy Lifestyle', 'Home Decor, Furniture & Garden', 'Jewellery & Watches',
-  'Luxury Goods', 'Music', 'Pets',
-  'Restaurants, Food & Grocery', 'Shopping & Retail', 'Sports',
-  'Television & Film', 'Toys, Children & Baby', 'Travel, Tourism & Aviation',
-  'Wedding',
-]
-
 // ── Types ─────────────────────────────────────────────
 interface Artist {
   chartmetric_id: number
@@ -244,6 +231,19 @@ export default function BrandSearchPage() {
   const [showSectors, setShowSectors] = useState(false)
   const [showFilters, setShowFilters] = useState(true)
 
+  // Sector multi-select (match on sector_NAME; ANY = ≥1 selected, ALL = every selected)
+  const [sectors, setSectors] = useState<string[]>([])
+  const [selectedSectorNames, setSelectedSectorNames] = useState<Set<string>>(new Set())
+  const [sectorLogic, setSectorLogic] = useState<'any' | 'all'>('any')
+  const toggleSector = (name: string) => {
+    setSelectedSectorNames(prev => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
   // Results
   const [results, setResults] = useState<Artist[]>([])
   const [loading, setLoading] = useState(false)
@@ -335,6 +335,14 @@ export default function BrandSearchPage() {
 
   const brandInputRef = useRef<HTMLInputElement>(null)
 
+  // Load the sector list once (28 distinct, sorted alphabetically by the endpoint)
+  useEffect(() => {
+    fetch('/api/sectors')
+      .then(r => r.json())
+      .then(d => setSectors(d.sectors || []))
+      .catch(() => { /* ignore */ })
+  }, [])
+
   // Brand autocomplete
   useEffect(() => {
     if (brandInput.length < 2) { setBrandSuggestions([]); return }
@@ -349,13 +357,13 @@ export default function BrandSearchPage() {
     return () => clearTimeout(t)
   }, [brandInput])
 
-  // Auto re-search when demographic filters change (only after initial search)
+  // Auto re-search when demographic / sector filters change (only after initial search)
   useEffect(() => {
-    if (!hasSearched || !hasBrandSelected) return
+    if (!hasSearched || !canSearch) return
     const t = setTimeout(() => runSearch(), 300)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedAges, gender, threshold])
+  }, [selectedAges, gender, threshold, selectedSectorNames, sectorLogic])
 
   const toggleAge = (age: string) => {
     setSelectedAges(prev =>
@@ -372,6 +380,11 @@ export default function BrandSearchPage() {
       if (gender !== 'any') params.set('gender', gender)
       if (selectedAges.length > 0) params.set('ages', selectedAges.join(','))
       params.set('threshold', String(threshold))
+      if (selectedSectorNames.size > 0) {
+        // repeated params — sector names contain commas
+        selectedSectorNames.forEach(n => params.append('sectorNames', n))
+        params.set('sectorLogic', sectorLogic)
+      }
 
       const res = await fetch(`/api/brand-search?${params}`)
       const data = await res.json()
@@ -380,10 +393,13 @@ export default function BrandSearchPage() {
       console.error(err)
     }
     setLoading(false)
-  }, [brandQuery, gender, selectedAges, threshold])
+  }, [brandQuery, gender, selectedAges, threshold, selectedSectorNames, sectorLogic])
 
   const hasBrandSelected = !!brandQuery
-  const hasFilters = hasBrandSelected || selectedAges.length > 0 || gender !== 'any'
+  const hasSectorFilter = selectedSectorNames.size > 0
+  // Sectors search standalone (no brand required) and AND with everything else.
+  const canSearch = hasBrandSelected || hasSectorFilter
+  const hasFilters = hasBrandSelected || hasSectorFilter || selectedAges.length > 0 || gender !== 'any'
 
   // Open the print-ready report in a new tab. Encodes the full filter state so the
   // report endpoint re-runs the identical search and re-applies the grid's
@@ -394,6 +410,10 @@ export default function BrandSearchPage() {
     if (gender !== 'any') params.set('gender', gender)
     if (selectedAges.length > 0) params.set('ages', selectedAges.join(','))
     params.set('threshold', String(threshold))
+    if (selectedSectorNames.size > 0) {
+      selectedSectorNames.forEach(n => params.append('sectorNames', n))
+      params.set('sectorLogic', sectorLogic)
+    }
     if (selectedCareerStages.size > 0) params.set('careerStages', Array.from(selectedCareerStages).join(','))
     if (selectedDealStages.size > 0) params.set('dealStages', Array.from(selectedDealStages).join(','))
     if (wonUpcomingOnly) params.set('wonUpcoming', '1')
@@ -406,6 +426,8 @@ export default function BrandSearchPage() {
     setSelectedAges([])
     setGender('any')
     setThreshold(20)
+    setSelectedSectorNames(new Set())
+    setSectorLogic('any')
     setResults([])
     setHasSearched(false)
     setSelectedCareerStages(new Set())
@@ -497,11 +519,14 @@ export default function BrandSearchPage() {
             <button
               onClick={() => setShowSectors(s => !s)}
               className="px-3 py-2 rounded-lg border text-xs transition-colors active:opacity-70 shrink-0"
-              style={{ borderColor: showSectors ? Y : BORDER, color: showSectors ? Y : W50 }}
-            >Sectors</button>
+              style={{
+                borderColor: (showSectors || hasSectorFilter) ? Y : BORDER,
+                color: (showSectors || hasSectorFilter) ? Y : W50,
+              }}
+            >Sectors{hasSectorFilter ? ` (${selectedSectorNames.size})` : ''}</button>
             <button
               onClick={runSearch}
-              disabled={loading || !hasBrandSelected}
+              disabled={loading || !canSearch}
               className="px-5 py-2 rounded-lg text-sm font-bold transition-all disabled:opacity-40 active:scale-95 shrink-0"
               style={{ background: Y, color: BG }}
             >
@@ -514,21 +539,55 @@ export default function BrandSearchPage() {
             )}
           </div>
 
-          {/* Sector browser */}
+          {/* Sector multi-select (match on sector_name; ANY = ≥1, ALL = every) */}
           {showSectors && (
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              {TOP_SECTORS.map(sector => (
-                <button
-                  key={sector}
-                  onClick={() => { setBrandQuery(sector); setBrandInput(sector); setShowSectors(false); runSearch() }}
-                  className="px-2.5 py-1 rounded-full text-xs border transition-colors hover:border-white/30 active:opacity-70"
-                  style={{
-                    background: brandQuery === sector ? `${Y}22` : 'transparent',
-                    borderColor: brandQuery === sector ? Y : BORDER,
-                    color: brandQuery === sector ? Y : W50,
-                  }}
-                >{sector}</button>
-              ))}
+            <div className="mb-3 p-3 rounded-lg border" style={{ borderColor: BORDER }}>
+              <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs" style={{ color: W50 }}>Match</span>
+                  <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: BORDER }}>
+                    {(['any', 'all'] as const).map(logic => (
+                      <button
+                        key={logic}
+                        onClick={() => setSectorLogic(logic)}
+                        className="px-3 py-1 text-xs font-semibold transition-colors"
+                        style={{
+                          background: sectorLogic === logic ? Y : 'transparent',
+                          color: sectorLogic === logic ? BG : W50,
+                        }}
+                      >{logic === 'any' ? 'ANY' : 'ALL'}</button>
+                    ))}
+                  </div>
+                  <span className="text-xs" style={{ color: W30 }}>
+                    {sectorLogic === 'any' ? 'ranks for at least one' : 'ranks for every'} selected sector
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs" style={{ color: W50 }}>{selectedSectorNames.size} selected</span>
+                  {hasSectorFilter && (
+                    <button onClick={() => setSelectedSectorNames(new Set())} className="text-xs" style={{ color: W30 }}>
+                      Clear sectors
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {sectors.map(name => {
+                  const on = selectedSectorNames.has(name)
+                  return (
+                    <button
+                      key={name}
+                      onClick={() => toggleSector(name)}
+                      className="px-2.5 py-1 rounded-full text-xs border transition-colors hover:border-white/30 active:opacity-70"
+                      style={{
+                        background: on ? `${Y}22` : 'transparent',
+                        borderColor: on ? Y : BORDER,
+                        color: on ? Y : W50,
+                      }}
+                    >{name}</button>
+                  )
+                })}
+              </div>
             </div>
           )}
 
