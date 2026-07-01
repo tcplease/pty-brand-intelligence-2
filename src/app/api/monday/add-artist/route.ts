@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createServiceClient } from '@/lib/supabase'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+
+// Data ops use the service_role client (was the anon singleton). Auth (getAuthUser)
+// stays on the cookie-bound SSR createServerClient below — untouched.
+const supabase = createServiceClient()
 
 // DRY RUN MODE — set to false when ready to write to Monday
 const DRY_RUN = false

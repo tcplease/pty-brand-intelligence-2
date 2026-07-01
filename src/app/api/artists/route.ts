@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createServiceClient } from '@/lib/supabase'
+
+// Server-side only — use the service_role client (replaces the anon singleton).
+const supabase = createServiceClient()
 
 const HIDDEN_STAGES = ['Lost', 'Tour Canceled', 'Fell Off (Not Lost)']
 const DIMMED_STAGES = ['Outbound - No Contact', 'Outbound - Automated Contact']

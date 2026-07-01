@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createServiceClient } from '@/lib/supabase'
 import { getSpotifyToken, getLatestAlbum } from '@/lib/spotify'
 import { resurfaceIfHidden } from '@/lib/signals'
+
+// Server-side only — use the service_role client (replaces the anon singleton).
+const supabase = createServiceClient()
 
 // ── Genre → album cycle length (months) ─────────────
 // Urban genres: ~12 months between albums

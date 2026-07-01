@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createServiceClient } from '@/lib/supabase'
+
+// Server-side only — use the service_role client (replaces the anon singleton).
+const supabase = createServiceClient()
 
 // Distinct sectors for the Match page multi-select. The IDENTITY is sector_name —
 // sector_id is a per-artist rank index (0,1,2… = that artist's #1/#2/#3 sector), so

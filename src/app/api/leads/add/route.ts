@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
-import { supabase, createServiceClient } from '@/lib/supabase'
+import { createServiceClient } from '@/lib/supabase'
 import { resolveAndEnrichArtist } from '@/lib/resolve-artist'
 import { getCMToken } from '@/lib/chartmetric-enrich'
+
+// Data ops use the service_role client (handleParse was on the anon singleton).
+const supabase = createServiceClient()
 
 export const maxDuration = 300
 

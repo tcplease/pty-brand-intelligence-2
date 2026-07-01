@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server'
-import { supabase, createServiceClient } from '@/lib/supabase'
+import { createServiceClient } from '@/lib/supabase'
 import { getSpotifyToken, getLatestAlbum } from '@/lib/spotify'
 import { latestStatValue, extractDemographics, getInstagramAudience, extractSocialUrls, type SocialUrls } from '@/lib/chartmetric'
 import { insertEnrichedArtist } from '@/lib/chartmetric-enrich'
 
 export const maxDuration = 300
+
+// Server-side only — service_role for all data ops (replaces the anon singleton).
+const supabase = createServiceClient()
 
 const CM_REFRESH_TOKEN = process.env.CHARTMETRIC_TOKEN!
 

@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createServiceClient } from '@/lib/supabase'
+
+// Server-side only — use the service_role client (replaces the anon singleton).
+const supabase = createServiceClient()
 
 // Returns benchmark data for the merch risk algorithm
 // - If artist_name is provided, returns that artist's benchmarks

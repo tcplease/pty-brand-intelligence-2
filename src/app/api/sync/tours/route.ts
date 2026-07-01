@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createServiceClient } from '@/lib/supabase'
+
+// Server-side only — use the service_role client (replaces the anon singleton).
+const supabase = createServiceClient()
 
 const TOURS_BOARD_ID = '3979002729'
 

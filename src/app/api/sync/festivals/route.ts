@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createServiceClient } from '@/lib/supabase'
 import { resurfaceIfHidden } from '@/lib/signals'
 import { getInstagramAudience, extractBrandAffinities, extractSectorAffinities } from '@/lib/chartmetric'
+
+// Server-side only — use the service_role client (replaces the anon singleton).
+const supabase = createServiceClient()
 
 const CM_REFRESH_TOKEN = process.env.CHARTMETRIC_TOKEN!
 const CM_BASE = 'https://api.chartmetric.com/api'

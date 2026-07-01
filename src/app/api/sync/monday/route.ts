@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
 import { createServiceClient } from '@/lib/supabase'
 import { resolveAndEnrichArtist } from '@/lib/resolve-artist'
 import {
@@ -12,6 +11,10 @@ import {
 } from '@/lib/chartmetric'
 
 export const maxDuration = 300
+
+// Server-side only — service_role for all data ops (was a mix of the anon singleton
+// `supabase` + per-function serviceClient; both are service_role now).
+const supabase = createServiceClient()
 
 const BOARD_ID = '2696356409'
 const CRM_BOARD_ID = '2696356486'

@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { createServiceClient } from '@/lib/supabase'
 
 // ── Stage handling (shared by Match grid + report) ──────────────────
 export const HIDDEN_STAGES = ['Lost', 'Tour Canceled', 'Fell Off (Not Lost)']
@@ -73,6 +73,9 @@ export interface BrandSearchParams {
 // The only time-dependent input is `today`, used to drop expired deals
 // (last_show < today) — not part of the demo/affinity score itself.
 export async function runBrandSearch(params: BrandSearchParams): Promise<BrandSearchResult[]> {
+  // Server-only. Instantiate the service_role client here (not at module scope) since
+  // this lib is broadly importable — keeps the service key out of any shared singleton.
+  const supabase = createServiceClient()
   const brand = params.brand || ''
   const sector = params.sector || ''
   const gender = params.gender || 'any'
