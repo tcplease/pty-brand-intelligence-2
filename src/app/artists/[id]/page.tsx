@@ -629,9 +629,14 @@ Festival Appearances: ${activity.filter(a => a.event_type === 'festival_added').
         body: JSON.stringify({ prompt: pitchInput, context }),
       })
       const data = await res.json()
-      setPitchOutput(data.pitch ?? data.error ?? 'No response.')
-    } catch {
-      setPitchOutput('Failed to generate pitch. Please try again.')
+      if (!res.ok || data.error) {
+        setPitchOutput(`⚠️ Pitch failed: ${data.error ?? `HTTP ${res.status}`}`)
+      } else {
+        setPitchOutput(data.pitch ?? 'No response.')
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'network error'
+      setPitchOutput(`⚠️ Pitch failed: ${message}`)
     }
     setPitchLoading(false)
   }

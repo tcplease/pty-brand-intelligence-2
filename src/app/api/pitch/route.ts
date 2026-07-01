@@ -195,7 +195,7 @@ export async function POST(request: Request) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 1500,
         system: systemPrompt,
         messages: [
@@ -213,13 +213,20 @@ Rep's request: ${prompt}`,
       }),
     })
 
-    const data = await res.json()
+    const data = await res.json().catch(() => null)
 
-    if (data.error) {
-      return NextResponse.json({ error: data.error.message }, { status: 500 })
+    // Surface real Anthropic failures (bad model, auth, rate limit, etc.) instead of
+    // silently returning placeholder text.
+    if (!res.ok || !data || data.error) {
+      const message = data?.error?.message || `Anthropic API error (HTTP ${res.status})`
+      console.error('[pitch] Anthropic call failed:', message)
+      return NextResponse.json({ error: message }, { status: 502 })
     }
 
-    const pitch = data.content?.[0]?.text ?? 'No response generated.'
+    const pitch = data.content?.[0]?.text
+    if (!pitch) {
+      return NextResponse.json({ error: 'No pitch text returned by the model' }, { status: 502 })
+    }
     return NextResponse.json({ pitch })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'

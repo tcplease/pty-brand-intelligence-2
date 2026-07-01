@@ -226,7 +226,7 @@ Every signal path (release-calendar, festivals, spotify, album-cycle, `lib/signa
 - Check `Get Artist Albums` endpoint for future release dates
 
 ### Anthropic Claude API (Pitch Builder)
-- Model: `claude-sonnet-4-20250514`
+- Model: `claude-sonnet-4-6`
 - Max tokens: 1000 per pitch response
 - All cached artist data (demographics, brand affinities, tour context, festival appearances) passed as context
 - **Pitch rules — enforce always:**

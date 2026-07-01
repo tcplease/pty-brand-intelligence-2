@@ -324,11 +324,11 @@ export default function BrandSearchPage() {
         body: JSON.stringify({ prompt, context }),
       })
       const data = await res.json()
-      if (data.error) throw new Error(data.error)
-      setPitchOutput(data.pitch || data.text || '')
+      if (!res.ok || data.error) throw new Error(data.error || `Pitch failed (HTTP ${res.status})`)
+      setPitchOutput(data.pitch || '')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown error'
-      setPitchOutput(`Error: ${message}`)
+      setPitchOutput(`⚠️ Pitch failed: ${message}`)
     }
     setPitchLoading(false)
   }
